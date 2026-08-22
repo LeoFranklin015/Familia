@@ -1,13 +1,8 @@
 // Addresses, interfaces and calldata builders. Token addresses come from the
 // canonical Aave address book — never pasted hex.
 //
-// The family money is USD₮ (Aave's Sepolia testnet USDT), which the Aave
-// faucet mints freely. The savings leg is our own SavingsVault rather than
-// Aave itself: Aave Sepolia's USDT reserve sits ~2x over its supply cap, so
-// supply() reverts for any amount (verify with spikes/probe-aave-reserves.mjs).
-// The vault implements Aave's exact pool interface, so pointing SAVINGS_POOL
-// at Aave's POOL with aUSDT as the source token is a config change, not a
-// code change — which is what happens on mainnet.
+// The family money is USD₮ — Aave's Sepolia testnet USDT, which the Aave
+// faucet mints freely. See SAVINGS_MODE below for how the pot is held.
 import { ethers } from 'ethers'
 import { AaveV3Sepolia } from '@bgd-labs/aave-address-book'
 
@@ -19,16 +14,35 @@ try {
 
 export const CHAIN_ID = 11155111
 
-export const SAVINGS_VAULT = requireEnv('SAVINGS_VAULT')
+export const SAVINGS_VAULT = process.env.SAVINGS_VAULT ?? ''
+
+/**
+ * How the pot is held.
+ *
+ *  'direct' (default) — the pot is plain USD₮ sitting in the parent's own
+ *      account. A spend is one `transferFrom(parent → merchant)`, so the only
+ *      token that ever appears on a block explorer is USD₮ itself. Nothing to
+ *      explain to anyone.
+ *
+ *  'vault' — the pot is deposited into SavingsVault and the parent holds a
+ *      receipt token, which the manager redeems on spend. This is the shape a
+ *      yield-bearing position has (aUSDT on mainnet), and the contract handles
+ *      it through the same `_settle` branch. It costs an extra token in the
+ *      trace, which is only worth it when the position actually earns —
+ *      and on Sepolia USD₮ cannot be supplied to Aave at all (error 51,
+ *      SUPPLY_CAP_EXCEEDED: the reserve is ~2x over its cap).
+ */
+export const SAVINGS_MODE = (process.env.SAVINGS_MODE ?? 'direct') as 'direct' | 'vault'
+
+const USDT = AaveV3Sepolia.ASSETS.USDT.UNDERLYING as string
 
 export const AAVE = {
   FAUCET: AaveV3Sepolia.FAUCET as string,
-  ASSET: AaveV3Sepolia.ASSETS.USDT.UNDERLYING as string,
-  // The receipt token held by the funder. Here the vault is its own receipt
-  // token; against Aave this would be aUSDT.
-  A_ASSET: SAVINGS_VAULT,
-  // Where a deposit goes and where a spend redeems from.
-  POOL: SAVINGS_VAULT,
+  ASSET: USDT,
+  // The token the manager pulls from the funder. In direct mode it is USD₮
+  // itself, which is what makes `source == asset` a plain ERC-20 pull.
+  A_ASSET: SAVINGS_MODE === 'vault' ? SAVINGS_VAULT : USDT,
+  POOL: SAVINGS_MODE === 'vault' ? SAVINGS_VAULT : USDT,
   DECIMALS: 6,
   SYMBOL: 'USD₮',
 }
@@ -88,8 +102,10 @@ export type Tx = { to: string; value: bigint; data: string }
  *  deposit — one batched, sponsored UserOperation, from an account that starts
  *  with nothing at all (not even gas). */
 export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
+  const mint = { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) }
+  if (SAVINGS_MODE === 'direct') return [mint]
   return [
-    { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) },
+    mint,
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
     { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('deposit', [amount]) },
   ]

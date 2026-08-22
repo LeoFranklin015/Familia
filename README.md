@@ -58,13 +58,25 @@ calldata inside those UserOperations. This is a consumer app, not an SDK.
 ## Architecture
 
 ```
-parent  ──WDK 7702──▶ [faucet.mint(USDT) + USDT.approve(vault) + vault.deposit]  (1 sponsored op)
-parent  ──WDK 7702──▶ [shares.approve(manager, Σ caps) + manager.grant(member, …)]
+parent  ──WDK 7702──▶ faucet.mint(USD₮ → parent)                    (1 sponsored op)
+parent  ──WDK 7702──▶ [USD₮.approve(manager, Σ caps) + manager.grant(member, …)]
 member  ──WDK 7702──▶ manager.spend(id, merchant, 8)
                         │ checks: caller, per-tx cap, period cap, expiry, allowlist
-                        ├─▶ shares.transferFrom(parent → manager, 8)
-                        └─▶ pool.withdraw(USDT, 8, merchant)      (same tx)
+                        └─▶ USD₮.transferFrom(parent → merchant, 8)
 ```
+
+A member's payment is exactly **one USD₮ transfer** on-chain, from the parent's
+account to the merchant, signed by the member and paid for by the paymaster.
+No wrapper token appears in the trace and there is nothing to explain to
+anyone reading the receipt.
+
+`SAVINGS_MODE=vault` switches the pot into `SavingsVault`, where the parent
+holds a receipt token the manager redeems on spend — the shape a yield-bearing
+position has (`aUSDT` on mainnet, via `source != asset` and the pool's
+`withdraw(asset, amount, to)`). It is off by default because it adds a second
+token to every receipt and buys nothing on a testnet where the position cannot
+earn: **Aave Sepolia cannot accept USD₮ at all.** A real supply attempt comes
+back `51` — `SUPPLY_CAP_EXCEEDED` — because the reserve sits ~2x over its cap.
 
 Three properties we did not break:
 
@@ -131,23 +143,21 @@ crosses only the TLS tunnel to that worker and lives in memory for the session.
   (`0xaA8E23Fb…`, freely faucet-mintable) while the paymaster prices gas in
   Pimlico's Sepolia USD₮ (`0xd077A4…`, owner-only mint). Both are testnet
   deployments of the same asset; on mainnet they are the one canonical USD₮.
-- **Why the savings leg is our own vault, not Aave:** the family money is
-  USD₮ and Aave V3 Sepolia simply cannot accept it — its USDT reserve sits
-  ~2x over its supply cap (cap 2,000,000,000 vs ~4,060,000,000 supplied), so
-  `supply()` reverts with Aave error 51 for **any** amount; USDC and DAI are in
-  the same state and GHO's facilitator bucket is full. Rather than change the
-  product's currency to something Aave would accept, `SavingsVault` implements
-  Aave's exact pool interface (`withdraw(asset, amount, to)`) and holds USD₮
-  1:1. Pointing the manager at Aave's real `POOL` with aUSDT as the source
-  token is a constructor argument, not a code change — which is what happens on
-  a network where the reserve works. `SavingsVault.t.sol` tests that
-  equivalence, and `spikes/spike1-aave-roundtrip.mjs` proves the same batched
-  gasless flow against Aave itself (in EURS, the one reserve there with room).
-  Verify the cap situation yourself: `node spikes/probe-aave-reserves.mjs`.
-- **Shares are 1:1 and there is no yield on testnet.** None is claimed or
-  displayed. The claim the demo makes is "the money sits in a savings position
-  and comes out gaslessly, to the merchant, the moment a member spends" — which
-  is exactly what the receipts show.
+- **Aave cannot hold this pot, and no amount of configuration changes that.**
+  Aave V3 Sepolia's USDT reserve is ~2x over its supply cap (cap
+  2,000,000,000 vs ~4,060,000,000 supplied), so `supply()` reverts with Aave
+  error `51` (`SUPPLY_CAP_EXCEEDED`) for **any** amount — that is a real
+  bundler-simulation revert from this repo, not an inference from the numbers.
+  USDC and DAI are in the same state; GHO's facilitator bucket is full. Check
+  it yourself: `node spikes/probe-aave-reserves.mjs`.
+- **So the pot is plain USD₮ and a spend is a single transfer.** Nothing is
+  wrapped, no yield is earned, and none is claimed. What the demo actually
+  proves — and what the receipts show — is "a kid pays, the USD₮ leaves the
+  parent's account for the merchant in one transaction, within limits the chain
+  enforces, and nobody held gas." The yield-bearing shape is implemented and
+  tested (`SAVINGS_MODE=vault`, `SavingsVault.t.sol`), and
+  `spikes/spike1-aave-roundtrip.mjs` runs the identical batched gasless flow
+  against real Aave — in EURS, the one Sepolia reserve with headroom.
 - **Parent fee mode:** members are always fully sponsored. The parent is
   sponsored too because Pimlico's Sepolia USD₮ `mint` is owner-only, so a demo
   cannot acquire it programmatically to pay token-mode fees. The per-call
