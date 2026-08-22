@@ -15,8 +15,16 @@ export default function App() {
 
   const refresh = () => api.get<Whoami>('/api/whoami').then(setWho)
 
-  if (joinToken) return <Join token={joinToken} onJoined={() => { history.replaceState(null, '', '/'); refresh() }} />
-  if (!who) return <div className="center" style={{ paddingTop: 80 }}><span className="spinner" /></div>
+  if (joinToken) {
+    return <Join token={joinToken} onJoined={() => { history.replaceState(null, '', '/'); refresh() }} />
+  }
+  if (!who) {
+    return (
+      <div className="app" aria-busy="true">
+        <span className="sr-only">Loading</span>
+      </div>
+    )
+  }
   if (who.role === 'parent') return <Parent onLogout={refresh} />
   if (who.role === 'member') return <Member onLogout={refresh} />
   return <Onboarding onReady={refresh} />
@@ -28,9 +36,13 @@ export function TopBar({ who, onLogout }: { who: string; onLogout: () => void })
     onLogout()
   }
   return (
-    <div className="topbar">
-      <span className="brand">kin<span className="dot">.</span></span>
-      <span className="who">{who} · <button onClick={logout}>lock</button></span>
-    </div>
+    <header className="topbar">
+      <span className="brand">kin<i>.</i></span>
+      {who && (
+        <span className="meta">
+          {who} · <button className="link" style={{ minHeight: 'auto', padding: 0, fontSize: '0.85rem' }} onClick={logout}>lock</button>
+        </span>
+      )}
+    </header>
   )
 }

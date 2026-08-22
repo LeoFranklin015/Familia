@@ -46,20 +46,20 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
 
   if (err && !invite) {
     return (
-      <div className="onboard">
-        <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
+      <div className="app">
+        <header className="topbar"><span className="brand">kin<i>.</i></span></header>
         <h1>This link's no good.</h1>
-        <p className="sub">It may have been used already. Ask for a fresh one.</p>
+        <p className="lede">It may have been used already. Ask for a fresh one.</p>
       </div>
     )
   }
-  if (!invite) return <div className="center" style={{ paddingTop: 80 }}><span className="spinner" /></div>
+  if (!invite) return <div className="app" aria-busy="true"><span className="sr-only">Loading</span></div>
 
   return (
-    <div className="onboard">
-      <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
+    <div className="app">
+      <header className="topbar"><span className="brand">kin<i>.</i></span></header>
       <h1>Hi {invite.inviteeName}.</h1>
-      <p className="sub">
+      <p className="lede">
         {invite.isParent
           ? <>Finish setting up <b>{invite.familyName}</b>.</>
           : <><b>{invite.familyName}</b> added you. One tap and you can start paying —
@@ -68,13 +68,13 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
 
       {!usePassphrase ? (
         <>
-          <button className="primary" onClick={withFaceId} disabled={busy}>
+          <button className="btn btn--primary btn--block" onClick={withFaceId} disabled={busy}>
             {busy ? <><span className="spinner" />Setting you up…</> : 'Use Face ID'}
           </button>
           {!webauthnAvailable() && (
-            <p className="alt dim">This browser has no Face ID — use a passphrase.</p>
+            <p className="center-row center-row--dim">This browser has no Face ID — use a passphrase.</p>
           )}
-          <p className="alt">
+          <p className="center-row">
             <button className="link" onClick={() => setUsePassphrase(true)}>Use a passphrase instead</button>
           </p>
         </>
@@ -83,18 +83,18 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
           <label>Choose a passphrase</label>
           <input type="password" placeholder="At least 8 characters" value={passphrase} autoFocus
             onChange={(e) => setPassphrase(e.target.value)} />
-          <button className="primary" onClick={withPassphrase} disabled={busy || passphrase.length < 8}>
+          <button className="btn btn--primary btn--block" onClick={withPassphrase} disabled={busy || passphrase.length < 8}>
             {busy ? <><span className="spinner" />Setting you up…</> : "I'm ready"}
           </button>
           {webauthnAvailable() && (
-            <p className="alt">
+            <p className="center-row">
               <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID instead</button>
             </p>
           )}
         </>
       )}
 
-      {err && <div className="note err">{err}</div>}
+      {err && <div className="note note--err" role="alert">{err}</div>}
     </div>
   )
 }

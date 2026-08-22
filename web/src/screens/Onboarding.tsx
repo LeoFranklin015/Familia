@@ -86,13 +86,13 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   }
 
   return (
-    <div className="onboard">
-      <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
+    <div className="app">
+      <header className="topbar"><span className="brand">kin<i>.</i></span></header>
 
       {step === 'welcome' && (
         <>
           <h1>Pocket money that can't go wrong.</h1>
-          <p className="sub">
+          <p className="lede">
             One pot the family shares. You decide what each person can spend, and the
             limits hold on their own — no card to cancel, no app for them to install.
           </p>
@@ -101,49 +101,49 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
             <li><b>Send a link.</b> One tap and they're ready.</li>
             <li><b>They just pay.</b> Within your limits it goes straight through.</li>
           </ol>
-          <button className="primary" onClick={() => go('names')}>Start a family</button>
-          <p className="alt">
+          <button className="btn btn--primary btn--block" onClick={() => go('names')}>Start a family</button>
+          <p className="center-row">
             Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
           </p>
-          <p className="alt dim">Been sent an invite? Just open that link.</p>
+          <p className="center-row center-row--dim">Been sent an invite? Just open that link.</p>
         </>
       )}
 
       {step === 'names' && (
         <>
-          <p className="crumb">Step 1 of 2</p>
+          <p className="eyebrow">Step 1 of 2</p>
           <h1>Name your family.</h1>
-          <p className="sub">So the people you invite know it's you.</p>
+          <p className="lede">So the people you invite know it's you.</p>
           <label>Family name</label>
           <input type="text" placeholder="The Riveras" value={famName} autoFocus
             onChange={(e) => setFamName(e.target.value)} />
           <label>Your first name</label>
           <input type="text" placeholder="Alex" value={parentName}
             onChange={(e) => setParentName(e.target.value)} />
-          <button className="primary" onClick={nameFamily} disabled={busy || !famName.trim() || !parentName.trim()}>
+          <button className="btn btn--primary btn--block" onClick={nameFamily} disabled={busy || !famName.trim() || !parentName.trim()}>
             {busy ? <><span className="spinner" />One moment…</> : 'Continue'}
           </button>
-          <p className="alt"><button className="link" onClick={() => go('welcome')}>Back</button></p>
+          <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
         </>
       )}
 
       {step === 'secure' && (
         <>
-          <p className="crumb">Step 2 of 2</p>
+          <p className="eyebrow">Step 2 of 2</p>
           <h1>Lock it to you, {parentName}.</h1>
-          <p className="sub">
+          <p className="lede">
             Your face is the key. Nothing to write down, nothing to lose — and only this
             device can open the pot.
           </p>
           {!usePassphrase ? (
             <>
-              <button className="primary" onClick={createWithFaceId} disabled={busy}>
+              <button className="btn btn--primary btn--block" onClick={createWithFaceId} disabled={busy}>
                 {busy ? <><span className="spinner" />Setting up…</> : 'Use Face ID'}
               </button>
               {!webauthnAvailable() && (
-                <p className="alt dim">This browser has no Face ID — use a passphrase.</p>
+                <p className="center-row center-row--dim">This browser has no Face ID — use a passphrase.</p>
               )}
-              <p className="alt">
+              <p className="center-row">
                 <button className="link" onClick={() => setUsePassphrase(true)}>Use a passphrase instead</button>
               </p>
             </>
@@ -152,11 +152,11 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               <label>Choose a passphrase</label>
               <input type="password" placeholder="At least 8 characters" value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)} autoFocus />
-              <button className="primary" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
+              <button className="btn btn--primary btn--block" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
                 {busy ? <><span className="spinner" />Setting up…</> : 'Create my account'}
               </button>
               {webauthnAvailable() && (
-                <p className="alt">
+                <p className="center-row">
                   <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID instead</button>
                 </p>
               )}
@@ -168,13 +168,13 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       {step === 'signin' && (
         <>
           <h1>Welcome back.</h1>
-          <p className="sub">Same face, same account.</p>
+          <p className="lede">Same face, same account.</p>
           {!usePassphrase ? (
             <>
-              <button className="primary" onClick={signInFaceId} disabled={busy}>
+              <button className="btn btn--primary btn--block" onClick={signInFaceId} disabled={busy}>
                 {busy ? <><span className="spinner" />Opening…</> : 'Sign in with Face ID'}
               </button>
-              <p className="alt">
+              <p className="center-row">
                 <button className="link" onClick={() => setUsePassphrase(true)}>Use my passphrase</button>
               </p>
             </>
@@ -183,19 +183,19 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               <label>Your passphrase</label>
               <input type="password" value={passphrase} autoFocus
                 onChange={(e) => setPassphrase(e.target.value)} />
-              <button className="primary" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
+              <button className="btn btn--primary btn--block" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
                 {busy ? <><span className="spinner" />Opening…</> : 'Sign in'}
               </button>
-              <p className="alt">
+              <p className="center-row">
                 <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID</button>
               </p>
             </>
           )}
-          <p className="alt"><button className="link" onClick={() => go('welcome')}>Back</button></p>
+          <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
         </>
       )}
 
-      {err && <div className="note err">{err}</div>}
+      {err && <div className="note note--err" role="alert">{err}</div>}
     </div>
   )
 }
