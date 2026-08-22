@@ -108,6 +108,30 @@ function Wallet({ st, busy, run }: {
       </div>
 
       <div className="card">
+        <h2>Fees</h2>
+        {st.wallet.feeMode === 'usdt' ? (
+          <>
+            <div className="row">
+              <div>
+                <div className="name">You pay your own fees in {st.symbol}</div>
+                <div className="meta">No ETH, no native token — never any.</div>
+              </div>
+              <div className="num">{st.wallet.feeBalance}</div>
+            </div>
+            <p className="hint mt8">
+              Everyone you invite is sponsored: they pay nothing, ever, and need no balance
+              of anything to spend.
+            </p>
+          </>
+        ) : (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Your first deposit is on us. After it, this account pays its own fees in{' '}
+            {st.symbol} — and the family always spends for free.
+          </p>
+        )}
+      </div>
+
+      <div className="card">
         <h2>Committed to the family</h2>
         <div className="row">
           <div className="meta">Promised in weekly limits</div>

@@ -39,7 +39,16 @@ export type Activity = {
 export type ParentState = {
   familyName: string
   symbol: string
-  wallet: { address: string; pot: string; vault: string; asset: string }
+  wallet: {
+    address: string
+    pot: string
+    vault: string
+    asset: string
+    /** USD₮ held outside Aave, which is what pays this account's own fees. */
+    feeBalance: string
+    feeMode: 'usdt' | 'sponsored'
+    paymaster: string | null
+  }
   activity: Activity[]
   members: Array<{
     id: string

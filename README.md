@@ -17,7 +17,10 @@ parent's Aave position and paid to the merchant **in the same transaction**.
 Over the cap, the spend doesn't fail — it becomes an on-chain request the
 parent approves from their phone. Revocation is instant and on-chain.
 
-Members never hold funds and never hold ETH. Their gas is fully sponsored.
+**Fees.** The parent pays their own, in USD₮, through a paymaster in this repo
+— no ETH at any point. Members pay nothing at all: their operations are
+sponsored, so a child needs no balance of anything to spend their allowance.
+Neither ever touches a native token.
 
 ## The five demo beats (all verified on Sepolia)
 
@@ -40,6 +43,7 @@ Run them yourself: `./scripts/e2e-demo.sh` (against a running server).
 | Member `sendTransaction`, sponsored | [`server/src/routes/member.ts` L83](server/src/routes/member.ts#L83) (spend), [L98](server/src/routes/member.ts#L98) (requestSpend) | The member's own account signs; `sender` is the member's EOA — authorization is the contract's job |
 | `getUserOperationReceipt` polling | [`server/src/wdk.ts` L86](server/src/wdk.ts#L86) | Receipt-first waiting (see "field notes" below for why) |
 | `@tetherto/wdk-secret-manager` | [`server/src/vault.ts` L40](server/src/vault.ts#L40) | Encrypts wallet entropy at rest; master-key mode takes the WebAuthn PRF output, PBKDF2 passphrase fallback |
+| Per-role fee mode: `paymasterUrl` + `paymasterToken` + pinned `paymasterAddress` vs `isSponsored` | [`server/src/wdk.ts` L76](server/src/wdk.ts#L76) (USD₮-paying registration), [`server/src/routes/parent.ts` L40](server/src/routes/parent.ts#L40) (which account signs) | The parent's ops are priced in USD₮ against our own paymaster; members stay sponsored. Chosen from on-chain state, so the parent's un-fundable first operation is sponsored and every one after it is self-paid |
 | WDK policy engine `registerPolicy` | [`server/src/wdk.ts` L37](server/src/wdk.ts#L37) | Member session accounts are locally denied any transaction that doesn't target the spend manager — defense in depth. The engine has no persistent counters, so it cannot express "120 per week" by itself; it's a UX/safety affordance. **The contract is the enforcement.** |
 
 WDK packages and installed versions:
@@ -122,6 +126,42 @@ the app works with or without a savings leg at all. 25 Foundry tests cover
 every named revert (`NotSpender`, `Revoked`, `Expired`, `OverPerTxCap`,
 `OverPeriodCap`, `RecipientNotAllowed`, …), both settlement paths, and the
 vault's equivalence to an Aave pool: `cd contracts && forge test`.
+
+### Paying gas in USD₮ — with our own paymaster
+
+Track 2 wants USD₮ as the gas token, and **no provider offers one on Base
+Sepolia**: Pimlico's list there is USDC/EURC/LINK/PIM, Candide's is CTT. The
+one testnet USD₮ either accepts is on Ethereum Sepolia (`0xd077A4…`) and is
+owner-only-mint with an **EOA** owner, so no entrant can obtain any — a fee
+quote against it fails at the balance check, never mind a payment.
+
+So the paymaster is ours: [`UsdtPaymaster.sol`](contracts/src/UsdtPaymaster.sol)
+plus a small [ERC-7677 service](server/src/paymaster-service.ts) that WDK's
+`paymasterUrl` points at. It is permissionless — authorisation is the account's
+USD₮ approval, not a signed voucher — which is why the service holds no key and
+keeps no state. It reserves 120% of the estimate at validation and charges the
+**actual** cost in `postOp`. 9 tests, and `spikes/spike3-own-usdt-paymaster.mjs`
+runs it end to end from an account that never holds a wei.
+
+Who paid for what, decoded from a real run (`node spikes/verify-fees.mjs <tx>`):
+
+| Operation | Paymaster | Sender charged |
+|---|---|---|
+| Parent's first deposit | Pimlico (sponsored) | nothing — there is no USD₮ yet to pay with |
+| Parent grants an allowance | **ours** | 0.004770 USD₮ |
+| **Member's payment** | Pimlico (sponsored) | **nothing** |
+| Parent revokes | **ours** | 0.002011 USD₮ |
+
+A deposit mints slightly more USD₮ than it supplies to Aave, leaving the parent
+a small USD₮ balance to pay fees from, and approves the paymaster for exactly
+that buffer — never unlimited. The switch between modes is decided from
+on-chain state each time, so it corrects itself.
+
+Two things worth stating plainly. The rate is a fixed `1 native = 2500 USD₮`
+set at deploy, not an oracle: on a testnet an oracle quotes fiction, and on a
+live network this contract should read a real feed. And this is **our**
+paymaster, not a provider's — which is the only way to price gas in USD₮ on
+this chain at all.
 
 ### Who sees what
 

@@ -3,7 +3,9 @@
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { randomBytes } from 'node:crypto'
-import { BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, POLICY_ID, RPC_URL } from './chain.js'
+import {
+  AAVE, BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, PAYMASTER_SERVICE_URL, POLICY_ID, RPC_URL, USDT_PAYMASTER,
+} from './chain.js'
 
 // The concrete account type is resolved at runtime; keep a structural type.
 export type GaslessAccount = {
@@ -59,6 +61,27 @@ export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}
     } as Parameters<WDK['registerPolicy']>[0])
   }
 
+  return { wdk, getAccount: () => wdk.getAccount('ethereum', 0) as Promise<unknown> as Promise<GaslessAccount> }
+}
+
+/**
+ * The same key, viewed through our own USD₮ paymaster instead of sponsorship.
+ *
+ * This is a separate WDK registration rather than a per-call override because
+ * `paymasterUrl` is wallet-level: sponsored operations must reach Pimlico,
+ * while USD₮-priced ones must reach our ERC-7677 service. `paymasterAddress`
+ * is pinned so WDK throws if the service ever names a different contract.
+ */
+export function createUsdtPayingWdk(mnemonic: string): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
+  const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as unknown as Parameters<WDK['registerWallet']>[1], {
+    provider: RPC_URL,
+    bundlerUrl: BUNDLER_URL,
+    delegationAddress: DELEGATION_ADDRESS,
+    isSponsored: false,
+    paymasterUrl: PAYMASTER_SERVICE_URL,
+    paymasterAddress: USDT_PAYMASTER,
+    paymasterToken: { address: AAVE.ASSET },
+  } as unknown as Parameters<WDK['registerWallet']>[2])
   return { wdk, getAccount: () => wdk.getAccount('ethereum', 0) as Promise<unknown> as Promise<GaslessAccount> }
 }
 
@@ -120,7 +143,10 @@ export type Session = {
   role: 'parent' | 'member'
   memberId?: string
   address: string
+  /** Sponsored. Members only ever use this; a parent uses it to bootstrap. */
   account: GaslessAccount
+  /** Parents only: the same key paying its own fees in USD₮. */
+  usdtPayer?: GaslessAccount
   dispose: () => void
   expiresAt: number
 }
@@ -131,13 +157,26 @@ const sessions = new Map<string, Session>()
 export async function createSession(role: 'parent' | 'member', memberId: string | undefined, mnemonic: string): Promise<Session> {
   const { wdk, getAccount } = createWdk(mnemonic, { memberGuard: role === 'member' })
   const account = await getAccount()
+
+  // Members are sponsored, always — a child should never need a token balance
+  // to spend their allowance. Only the parent pays their own way.
+  let payer: { wdk: WDK; account: GaslessAccount } | undefined
+  if (role === 'parent' && USDT_PAYMASTER) {
+    const p = createUsdtPayingWdk(mnemonic)
+    payer = { wdk: p.wdk, account: await p.getAccount() }
+  }
+
   const session: Session = {
     id: randomBytes(24).toString('hex'),
     role,
     memberId,
     address: await account.getAddress(),
     account,
-    dispose: () => wdk.dispose(),
+    usdtPayer: payer?.account,
+    dispose: () => {
+      wdk.dispose()
+      payer?.wdk.dispose()
+    },
     expiresAt: Date.now() + SESSION_TTL_MS,
   }
   sessions.set(session.id, session)

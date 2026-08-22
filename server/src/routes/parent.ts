@@ -4,8 +4,9 @@
 import { Hono, type Context } from 'hono'
 import type { Session } from '../wdk.js'
 import {
-  AAVE, MERCHANTS, aAssetRead, buildDepositBatch, buildGrantBatch, buildRevokeBatch,
-  erc20, eventArgFromLogs, formatUnits, managerIface, managerRead, MANAGER, parseUnits,
+  AAVE, MERCHANTS, aAssetRead, assetRead, buildDepositBatch, buildGrantBatch, buildRevokeBatch,
+  canPayFeesInUsdt, erc20, eventArgFromLogs, formatUnits, managerIface, managerRead, MANAGER,
+  parseUnits, USDT_PAYMASTER,
 } from '../chain.js'
 import { mustFamily, record, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -25,6 +26,21 @@ async function parentOnly(c: Context<Env>, next: () => Promise<void>) {
   await next()
 }
 
+/**
+ * Which account signs a parent's operation.
+ *
+ * The parent pays their own fees in USD₮ once they hold some and have approved
+ * the paymaster — that is the whole point of the token-fee path. Before then
+ * (their very first deposit) there is nothing to pay with, so onboarding is
+ * sponsored. The choice is made from on-chain state, so it corrects itself.
+ */
+async function payingAccount(s: Session): Promise<{ account: typeof s.account; feeMode: 'usdt' | 'sponsored' }> {
+  if (s.usdtPayer && (await canPayFeesInUsdt(s.address))) {
+    return { account: s.usdtPayer, feeMode: 'usdt' }
+  }
+  return { account: s.account, feeMode: 'sponsored' }
+}
+
 /** Sum of the period caps of all active scopes — the bounded allowance the
  *  manager is trusted with. Never type(uint256).max. */
 function outstandingCaps(extra: bigint = 0n): bigint {
@@ -40,14 +56,19 @@ parentRoutes.post('/api/deposit', async (c) => {
   const s = c.get('session')
   const { amount } = await c.req.json()
   const value = parseUnits(amount)
-  const { hash } = await s.account.sendTransaction(buildDepositBatch(s.address, value))
-  const result = await waitForUserOp(s.account, hash)
+
+  // A deposit also tops up the parent's USD₮ fee buffer and re-approves the
+  // paymaster, so the account can pay its own way from here on. The first one
+  // is necessarily sponsored — there is no USD₮ yet to pay a fee with.
+  const { account, feeMode } = await payingAccount(s)
+  const { hash } = await account.sendTransaction(buildDepositBatch(s.address, value, { withFeeBuffer: true }))
+  const result = await waitForUserOp(account, hash)
   if (!result.success) return c.json({ error: 'Deposit did not go through — try again.' }, 502)
   const f = mustFamily()
   f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
   save()
   record({ kind: 'deposit', text: `Added ${amount} to the pot`, amount: String(amount), txHash: result.txHash })
-  return c.json({ txHash: result.txHash, userOpHash: hash })
+  return c.json({ txHash: result.txHash, userOpHash: hash, feeMode })
 })
 
 parentRoutes.post('/api/members/:id/grant', async (c) => {
@@ -67,8 +88,9 @@ parentRoutes.post('/api/members/:id/grant', async (c) => {
     perTxCap, periodCap, periodLength, expiry,
     newAllowanceTotal: outstandingCaps(periodCap),
   })
-  const { hash } = await s.account.sendTransaction(batch)
-  const result = await waitForUserOp(s.account, hash)
+  const { account, feeMode } = await payingAccount(s)
+  const { hash } = await account.sendTransaction(batch)
+  const result = await waitForUserOp(account, hash)
   if (!result.success) return c.json({ error: 'Granting the allowance failed — try again.' }, 502)
 
   const scopeId = eventArgFromLogs(result.logs, 'Granted', 'id')
@@ -84,7 +106,7 @@ parentRoutes.post('/api/members/:id/grant', async (c) => {
     memberId: member.id,
     txHash: result.txHash,
   })
-  return c.json({ scopeId, txHash: result.txHash })
+  return c.json({ scopeId, txHash: result.txHash, feeMode })
 })
 
 parentRoutes.post('/api/members/:id/revoke', async (c) => {
@@ -94,15 +116,16 @@ parentRoutes.post('/api/members/:id/revoke', async (c) => {
   if (!member?.scopeId) return c.json({ error: 'member has no allowance' }, 404)
 
   member.revoked = true // compute the post-revoke bounded allowance
-  const { hash } = await s.account.sendTransaction(buildRevokeBatch(member.scopeId, outstandingCaps()))
-  const result = await waitForUserOp(s.account, hash)
+  const { account, feeMode } = await payingAccount(s)
+  const { hash } = await account.sendTransaction(buildRevokeBatch(member.scopeId, outstandingCaps()))
+  const result = await waitForUserOp(account, hash)
   if (!result.success) {
     member.revoked = false
     return c.json({ error: 'Revoke failed — try again.' }, 502)
   }
   save()
   record({ kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
-  return c.json({ txHash: result.txHash })
+  return c.json({ txHash: result.txHash, feeMode })
 })
 
 parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
@@ -124,8 +147,9 @@ parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
         { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, outstandingCaps()]) },
       ]
     : [{ to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('denyRequest', [req.requestId]) }]
-  const { hash } = await s.account.sendTransaction(txs)
-  const result = await waitForUserOp(s.account, hash)
+  const { account, feeMode } = await payingAccount(s)
+  const { hash } = await account.sendTransaction(txs)
+  const result = await waitForUserOp(account, hash)
   if (!result.success) return c.json({ error: `Could not ${verdict} — try again.` }, 502)
   req.status = verdict === 'approve' ? 'approved' : 'denied'
   req.txHash = result.txHash
@@ -140,7 +164,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
     memberId: req.memberId,
     txHash: result.txHash,
   })
-  return c.json({ txHash: result.txHash })
+  return c.json({ txHash: result.txHash, feeMode })
 })
 
 parentRoutes.get('/api/state', async (c) => {
@@ -148,7 +172,11 @@ parentRoutes.get('/api/state', async (c) => {
   if (s?.role !== 'parent') return c.json({ error: 'parent only' }, 403)
   const f = mustFamily()
 
-  const pool = (await aAssetRead.balanceOf(s.address)) as bigint
+  const [pool, feeBalance, paysInUsdt] = await Promise.all([
+    aAssetRead.balanceOf(s.address) as Promise<bigint>,
+    assetRead.balanceOf(s.address) as Promise<bigint>,
+    canPayFeesInUsdt(s.address),
+  ])
   const members = await Promise.all(
     f.members.map(async (m) => {
       let spendable = '0', spent = '0', resetsAt = 0
@@ -174,7 +202,17 @@ parentRoutes.get('/api/state', async (c) => {
     symbol: AAVE.SYMBOL,
     // The wallet: the parent's own account and the pot it holds. Members
     // never receive any of this.
-    wallet: { address: s.address, pot: formatUnits(pool), vault: AAVE.A_ASSET, asset: AAVE.ASSET },
+    wallet: {
+      address: s.address,
+      pot: formatUnits(pool),
+      vault: AAVE.A_ASSET,
+      asset: AAVE.ASSET,
+      // Fees: the parent pays their own in USD₮ once bootstrapped; members
+      // are always sponsored.
+      feeBalance: formatUnits(feeBalance),
+      feeMode: paysInUsdt ? 'usdt' : 'sponsored',
+      paymaster: USDT_PAYMASTER || null,
+    },
     pool: formatUnits(pool),
     deposits: f.deposits,
     activity: f.activity,

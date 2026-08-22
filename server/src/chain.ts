@@ -44,6 +44,17 @@ export const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base
 export const BUNDLER_URL = `https://api.pimlico.io/v2/${CHAIN_ID}/rpc?apikey=${requireEnv('PIMLICO_API_KEY')}`
 export const POLICY_ID = process.env.POLICY_ID || undefined
 
+/** Our own USD₮ paymaster, and the ERC-7677 service in front of it. No
+ *  provider prices gas in USD₮ on this chain, so we run one. */
+export const USDT_PAYMASTER = process.env.USDT_PAYMASTER_ADDRESS || ''
+export const PAYMASTER_SERVICE_URL =
+  process.env.PAYMASTER_SERVICE_URL || `http://localhost:${process.env.PORT ?? 8787}/paymaster`
+
+/** USD₮ the parent keeps outside Aave to pay their own fees with. Operations
+ *  cost fractions of a cent, so this lasts the life of a demo; it exists at
+ *  all because a fee in USD₮ cannot be paid out of an Aave position. */
+export const FEE_BUFFER = 5_000000n // 5 USD₮
+
 // Demo merchants the member can pay. Deterministic, obviously-test addresses.
 export const MERCHANTS = [
   { name: 'Corner Store', address: '0x1111000000000000000000000000000000001111' },
@@ -91,12 +102,33 @@ export type Tx = { to: string; value: bigint; data: string }
 /** Mint test USD₮ from the Aave faucet, approve the savings position, and
  *  deposit — one batched, sponsored UserOperation, from an account that starts
  *  with nothing at all (not even gas). */
-export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
-  return [
-    { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) },
+export function buildDepositBatch(parent: string, amount: bigint, opts: { withFeeBuffer?: boolean } = {}): Tx[] {
+  // Mint a little more than goes into Aave, so the parent is left holding USD₮
+  // to pay their own fees with from here on.
+  const buffer = opts.withFeeBuffer ? FEE_BUFFER : 0n
+  const txs: Tx[] = [
+    { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount + buffer]) },
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
     { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
   ]
+  if (opts.withFeeBuffer && USDT_PAYMASTER) {
+    // Approving the paymaster is what authorises it to charge this account —
+    // there is no signed voucher. Bounded to the buffer, never unlimited.
+    txs.push({ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, buffer]) })
+  }
+  return txs
+}
+
+/** Whether this account can currently pay its own fees in USD₮: it needs a
+ *  USD₮ balance and a standing approval to the paymaster. */
+export async function canPayFeesInUsdt(address: string): Promise<boolean> {
+  if (!USDT_PAYMASTER) return false
+  const [balance, allowance] = await Promise.all([
+    assetRead.balanceOf(address) as Promise<bigint>,
+    assetRead.allowance(address, USDT_PAYMASTER) as Promise<bigint>,
+  ])
+  const floor = 100_000n // 0.10 USD₮ — many operations' worth
+  return balance >= floor && allowance >= floor
 }
 
 /** Grant a member a scope and (re)bound the manager's aUSDT allowance to the
