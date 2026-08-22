@@ -13,3 +13,7 @@ cache/
 *.log
 .DS_Store
 tasks/notes.md
+
+# runtime state
+server/data/
+web/dist/
