@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type FeeQuote, type ParentState } from '../api'
+import { approve, knownCredentialId, NeedsPassphrase, post, type Approval } from '../auth'
 import { TopBar } from '../App'
 import { Sheet } from '../components/Sheet'
 import { Empty, Icon, Money, ScreenSkeleton } from '../components/ui'
@@ -11,6 +12,9 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('pot')
   const [note, setNote] = useState<{ kind: 'ok' | 'err' | 'wait'; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // A write blocked on a passphrase, held until the sheet answers.
+  const [pending, setPending] = useState<{ key: string; ok: string; call: (a: Approval) => Promise<unknown> } | null>(null)
+  const [passphrase, setPassphrase] = useState('')
 
   const load = () => api.get<ParentState>('/api/state').then(setSt).catch(() => {})
   useEffect(() => {
@@ -28,11 +32,27 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     )
   }
 
-  const run = async (key: string, fn: () => Promise<unknown>, okText: string) => {
+  /**
+   * Every parent write asks for the key at the moment it happens. These are the
+   * operations with no on-chain ceiling behind them — approving a request
+   * deliberately bypasses the caps — so the person is the only guard, and they
+   * should be asked each time rather than once an hour.
+   */
+  const run = async (key: string, call: (auth: Approval) => Promise<unknown>, okText: string, auth?: Approval) => {
+    let approval = auth
+    if (!approval) {
+      try {
+        approval = await approve()
+      } catch (e) {
+        if (e instanceof NeedsPassphrase) { setPending({ key, ok: okText, call }); return }
+        setNote({ kind: 'err', text: 'Approval was cancelled.' })
+        return
+      }
+    }
     setBusy(key)
     setNote({ kind: 'wait', text: 'Sending — a few seconds.' })
     try {
-      const res = (await fn()) as { feeCharged?: string | null } | undefined
+      const res = (await call(approval)) as { feeCharged?: string | null } | undefined
       const charged = res?.feeCharged
       setNote({ kind: 'ok', text: charged ? `${okText} Network fee: ${charged} ${st.symbol}.` : okText })
       await load()
@@ -43,8 +63,18 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  const runWithPassphrase = () => {
+    const credentialId = knownCredentialId()
+    const job = pending
+    setPending(null)
+    const pass = passphrase
+    setPassphrase('')
+    if (!credentialId || !job) { setNote({ kind: 'err', text: 'No account on this device.' }); return }
+    run(job.key, job.call, job.ok, { credentialId, passphrase: pass })
+  }
+
   const verdict = (rid: string, v: 'approve' | 'deny') =>
-    run(`req:${rid}`, () => api.post(`/api/requests/${rid}/${v}`),
+    run(`req:${rid}`, (auth) => post(`/api/requests/${rid}/${v}`, {}, auth),
       v === 'approve' ? 'Approved and paid.' : 'Declined.')
 
   const asks = st.pendingRequests
@@ -93,6 +123,16 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
+      <Sheet open={Boolean(pending)} title="Confirm it's you" onClose={() => setPending(null)}>
+        <p className="hint">This device can't use Face ID, so your passphrase approves this.</p>
+        <label htmlFor="pp">Your passphrase</label>
+        <input id="pp" type="password" value={passphrase} autoFocus enterKeyHint="go"
+          onChange={(e) => setPassphrase(e.target.value)} />
+        <button className="btn btn--primary btn--block mt4" disabled={passphrase.length < 8} onClick={runWithPassphrase}>
+          Approve
+        </button>
+      </Sheet>
+
       <nav className="tabbar" role="tablist" aria-label="Sections">
         {([
           ['pot', 'Pot', <Icon.pot key="p" />],
@@ -110,7 +150,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
   )
 }
 
-type RunFn = (k: string, fn: () => Promise<unknown>, ok: string) => Promise<void>
+type RunFn = (k: string, call: (auth: Approval) => Promise<unknown>, ok: string) => Promise<void>
 
 /**
  * The fee for an operation, quoted in USD₮ before it's signed.
@@ -193,7 +233,7 @@ function Pot({ st, busy, run }: { st: ParentState; busy: string | null; run: Run
         <Fee quote={quote} symbol={st.symbol} />
         <button className="btn btn--primary btn--block mt4"
           disabled={busy !== null || !Number(amount)}
-          onClick={() => run('deposit', () => api.post('/api/deposit', { amount }),
+          onClick={() => run('deposit', (auth) => post('/api/deposit', { amount }, auth),
             `Added ${amount} ${st.symbol} to the pot.`).then(() => setAmount(''))}>
           {busy === 'deposit' && <span className="spinner" />}
           {busy === 'deposit' ? 'Adding…' : 'Add to pot'}
@@ -306,7 +346,7 @@ function Family({ st, busy, run }: { st: ParentState; busy: string | null; run: 
             </button>
             {m.scopeId && !m.revoked && (
               <button className="btn btn--sm btn--danger" disabled={busy !== null}
-                onClick={() => run(`revoke:${m.id}`, () => api.post(`/api/members/${m.id}/revoke`), `${m.name} can't spend any more.`)}>
+                onClick={() => run(`revoke:${m.id}`, (auth) => post(`/api/members/${m.id}/revoke`, {}, auth), `${m.name} can't spend any more.`)}>
                 {busy === `revoke:${m.id}` ? <span className="spinner" /> : 'Turn off'}
               </button>
             )}
@@ -331,7 +371,7 @@ function Family({ st, busy, run }: { st: ParentState; busy: string | null; run: 
           onClick={() => {
             const m = editing!
             setEditing(null)
-            run(`grant:${m.id}`, () => api.post(`/api/members/${m.id}/grant`, { perTx, period, periodLengthDays: 7 }),
+            run(`grant:${m.id}`, (auth) => post(`/api/members/${m.id}/grant`, { perTx, period, periodLengthDays: 7 }, auth),
               `${m.name} can spend up to ${perTx} at a time.`)
           }}>
           Save limits

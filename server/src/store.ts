@@ -1,15 +1,46 @@
-// Single-family JSON store. Hackathon-grade on purpose: one file, atomic-ish
-// writes, no concurrency story beyond node's single thread.
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
-import { randomBytes } from 'node:crypto'
+// Persistence, split along the line that matters: family records are ordinary
+// application data, key material is not.
+//
+//   data/families/<familyId>.json   who is in the household, limits, history
+//   data/vaults/<credentialId>.json encrypted entropy, one file per account
+//
+// Vault files are written 0600 and hold only ciphertext, a public salt, and
+// the routing needed to identify their owner. Nothing in them opens without
+// the key the passkey re-derives, and nothing outside them can produce it.
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync } from 'node:fs'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-export type VaultBlob = { ciphertextHex: string; saltHex: string; credentialId: string; prf: boolean }
+const DATA = join(dirname(fileURLToPath(import.meta.url)), '../data')
+const FAMILIES = join(DATA, 'families')
+const VAULTS = join(DATA, 'vaults')
+
+mkdirSync(FAMILIES, { recursive: true })
+mkdirSync(VAULTS, { recursive: true, mode: 0o700 })
+try { chmodSync(VAULTS, 0o700) } catch { /* best effort on exotic filesystems */ }
+
+// ------------------------------------------------------------------- types
+export type Role = 'parent' | 'member'
+
+/** One account's key material, plus enough to know whose it is. */
+export type Vault = {
+  credentialId: string
+  ciphertextHex: string
+  saltHex: string
+  prf: boolean
+  familyId: string
+  role: Role
+  memberId?: string
+  address: string
+  name: string
+}
 
 export type Member = {
   id: string
   name: string
   address: string
-  vault: VaultBlob
+  credentialId: string
   scopeId?: string
   caps?: { perTx: string; period: string; periodLength: number; expiry: number }
   grantTx?: string
@@ -28,9 +59,6 @@ export type SpendRequest = {
   txHash?: string
 }
 
-/** One line of history. `memberId` is set when a member caused it, which is
- *  also how a member's own feed is filtered — a member is never shown the
- *  household's activity, only their own payments. */
 export type Activity = {
   id: string
   kind: 'deposit' | 'allowance' | 'revoke' | 'payment' | 'ask' | 'approved' | 'denied'
@@ -42,8 +70,10 @@ export type Activity = {
 }
 
 export type Family = {
+  id: string
   name: string
-  parent?: { name: string; address: string; vault: VaultBlob }
+  createdAt: number
+  parent?: { name: string; address: string; credentialId: string }
   parentInviteToken?: string
   invites: Array<{ token: string; name: string; usedBy?: string; createdAt: number }>
   members: Member[]
@@ -52,32 +82,22 @@ export type Family = {
   activity: Activity[]
 }
 
-export function record(entry: Omit<Activity, 'id' | 'at'>) {
-  const f = mustFamily()
-  f.activity.unshift({ ...entry, id: randomBytes(8).toString('hex'), at: Date.now() })
-  f.activity = f.activity.slice(0, 100)
-  save()
-}
+// --------------------------------------------------------------- families
+const familyPath = (id: string) => join(FAMILIES, `${id}.json`)
 
-const PATH = new URL('../data/family.json', import.meta.url).pathname
-
-let family: Family | null = null
-
-export function getFamily(): Family | null {
-  // Check the file first: deleting it is the documented demo reset, so a
-  // cached copy must not outlive it.
-  if (!existsSync(PATH)) {
-    family = null
-    return null
-  }
-  if (!family) family = JSON.parse(readFileSync(PATH, 'utf8')) as Family
-  return family
+function writeAtomic(path: string, data: unknown, mode?: number) {
+  const tmp = `${path}.tmp`
+  writeFileSync(tmp, JSON.stringify(data, null, 2), mode ? { mode } : undefined)
+  renameSync(tmp, path)
+  if (mode) { try { chmodSync(path, mode) } catch { /* best effort */ } }
 }
 
 export function createFamily(name: string, parentName: string): { family: Family; parentJoinToken: string } {
   const token = randomBytes(16).toString('hex')
-  family = {
+  const family: Family = {
+    id: randomUUID(),
     name,
+    createdAt: Date.now(),
     parentInviteToken: token,
     invites: [{ token, name: parentName, createdAt: Date.now() }],
     members: [],
@@ -85,38 +105,68 @@ export function createFamily(name: string, parentName: string): { family: Family
     deposits: [],
     activity: [],
   }
-  save()
+  saveFamily(family)
   return { family, parentJoinToken: token }
 }
 
-export function save() {
-  if (!family) return
-  const tmp = PATH + '.tmp'
-  writeFileSync(tmp, JSON.stringify(family, null, 2))
-  renameSync(tmp, PATH)
+export function getFamily(id: string): Family | null {
+  const p = familyPath(id)
+  return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as Family) : null
 }
 
-export function newInvite(name: string): string {
-  const f = mustFamily()
+export function mustFamily(id: string): Family {
+  const f = getFamily(id)
+  if (!f) throw new Error('That family no longer exists.')
+  return f
+}
+
+export function saveFamily(f: Family) {
+  writeAtomic(familyPath(f.id), f)
+}
+
+export function listFamilies(): Family[] {
+  if (!existsSync(FAMILIES)) return []
+  return readdirSync(FAMILIES)
+    .filter((n) => n.endsWith('.json'))
+    .map((n) => JSON.parse(readFileSync(join(FAMILIES, n), 'utf8')) as Family)
+}
+
+/** Find the family holding an unused invite token, across all of them. */
+export function findInvite(token: string): { family: Family; invite: Family['invites'][number] } | null {
+  for (const family of listFamilies()) {
+    const invite = family.invites.find((i) => i.token === token && !i.usedBy)
+    if (invite) return { family, invite }
+  }
+  return null
+}
+
+export function newInvite(family: Family, name: string): string {
   const token = randomBytes(16).toString('hex')
-  f.invites.push({ token, name, createdAt: Date.now() })
-  save()
+  family.invites.push({ token, name, createdAt: Date.now() })
+  saveFamily(family)
   return token
 }
 
-export function findInvite(token: string) {
-  return mustFamily().invites.find((i) => i.token === token && !i.usedBy)
+export function record(familyId: string, entry: Omit<Activity, 'id' | 'at'>) {
+  const f = mustFamily(familyId)
+  f.activity.unshift({ ...entry, id: randomBytes(8).toString('hex'), at: Date.now() })
+  f.activity = f.activity.slice(0, 100)
+  saveFamily(f)
 }
 
-export function findByCredentialId(credentialId: string): { role: 'parent' | 'member'; member?: Member; vault: VaultBlob } | undefined {
-  const f = mustFamily()
-  if (f.parent?.vault.credentialId === credentialId) return { role: 'parent', vault: f.parent.vault }
-  const m = f.members.find((x) => x.vault.credentialId === credentialId)
-  return m ? { role: 'member', member: m, vault: m.vault } : undefined
+// ----------------------------------------------------------------- vaults
+/** Credential ids are chosen by the authenticator (base64url) or by us for
+ *  passphrase accounts. Keep them to a safe filename alphabet either way. */
+const safeId = (id: string) => /^[A-Za-z0-9_:-]{1,128}$/.test(id)
+const vaultPath = (credentialId: string) => join(VAULTS, `${encodeURIComponent(credentialId)}.json`)
+
+export function putVault(v: Vault) {
+  if (!safeId(v.credentialId)) throw new Error('Unusable credential id.')
+  writeAtomic(vaultPath(v.credentialId), v, 0o600)
 }
 
-export function mustFamily(): Family {
-  const f = getFamily()
-  if (!f) throw new Error('No family yet — create one first.')
-  return f
+export function getVault(credentialId: string): Vault | null {
+  if (!safeId(credentialId)) return null
+  const p = vaultPath(credentialId)
+  return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as Vault) : null
 }

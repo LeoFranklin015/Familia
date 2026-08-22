@@ -1,26 +1,28 @@
-// Family creation, invites, join, and session unlock. Invite links carry a
-// one-time token and no key material — the key is born on the joining device.
-import { Hono, type Context } from 'hono'
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
-import { createFamily, findByCredentialId, findInvite, getFamily, mustFamily, newInvite, save } from '../store.js'
-import { createVaultEntry, openVaultEntry, type KeySource } from '../vault.js'
-import { addressForMnemonic, createSession, destroySession, getSession } from '../wdk.js'
-import { bootstrapParent } from '../bootstrap.js'
+// Creating a household, joining one, signing in, and saying who you are.
+//
+// This server hosts many families. An invite token identifies which one, and a
+// credential id identifies an account within it — so nothing here depends on
+// there being a single household.
+//
+// Invite links carry a one-time token and no key material: the key is born on
+// the joining device and never leaves it in a form anyone else can use.
+import { Hono } from 'hono'
+import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
 import { randomUUID } from 'node:crypto'
+import {
+  createFamily, findInvite, getFamily, getVault, mustFamily, newInvite, putVault, saveFamily,
+} from '../store.js'
+import { createVaultEntry, openVaultEntry, type KeySource } from '../vault.js'
+import { addressForMnemonic, createSession, destroySession } from '../wdk.js'
+import { bootstrapParent } from '../bootstrap.js'
+import { COOKIE, currentSession } from '../authorize.js'
 
 export const joinRoutes = new Hono()
 
-const COOKIE = 'kin_session'
-
-export function currentSession(c: Context<any, any, any>) {
-  return getSession(getCookie(c, COOKIE))
-}
-
 joinRoutes.post('/api/family', async (c) => {
-  if (getFamily()) return c.json({ error: 'A family already exists on this server.' }, 409)
   const { name, parentName } = await c.req.json()
-  if (!name || !parentName) return c.json({ error: 'name and parentName are required' }, 400)
-  const { parentJoinToken } = createFamily(name, parentName)
+  if (!name?.trim() || !parentName?.trim()) return c.json({ error: 'A family name and your name are needed.' }, 400)
+  const { parentJoinToken } = createFamily(name.trim(), parentName.trim())
   return c.json({ joinPath: `/join/${parentJoinToken}` })
 })
 
@@ -28,68 +30,83 @@ joinRoutes.post('/api/invites', async (c) => {
   const s = currentSession(c)
   if (s?.role !== 'parent') return c.json({ error: 'parent only' }, 403)
   const { name } = await c.req.json()
-  if (!name) return c.json({ error: 'name is required' }, 400)
-  return c.json({ joinPath: `/join/${newInvite(name)}` })
+  if (!name?.trim()) return c.json({ error: 'A name is needed.' }, 400)
+  return c.json({ joinPath: `/join/${newInvite(mustFamily(s.familyId), name.trim())}` })
 })
 
 joinRoutes.get('/api/join/:token', (c) => {
-  const f = getFamily()
-  if (!f) return c.json({ error: 'no family' }, 404)
-  const invite = findInvite(c.req.param('token'))
-  if (!invite) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
+  const found = findInvite(c.req.param('token'))
+  if (!found) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
   return c.json({
-    familyName: f.name,
-    inviteeName: invite.name,
-    isParent: invite.token === f.parentInviteToken && !f.parent,
+    familyName: found.family.name,
+    inviteeName: found.invite.name,
+    isParent: found.invite.token === found.family.parentInviteToken && !found.family.parent,
   })
 })
 
 joinRoutes.post('/api/join/:token', async (c) => {
-  const f = mustFamily()
-  const invite = findInvite(c.req.param('token'))
-  if (!invite) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
+  const found = findInvite(c.req.param('token'))
+  if (!found) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
+  const { family, invite } = found
 
   const body = (await c.req.json()) as KeySource & { credentialId?: string }
   const credentialId = body.credentialId ?? `pass:${randomUUID()}`
+  if (getVault(credentialId)) return c.json({ error: 'That passkey is already in use.' }, 409)
+
+  // Entropy is generated and encrypted here, then only the ciphertext is kept.
   const { mnemonic, ciphertextHex, saltHex } = await createVaultEntry(body)
   const address = await addressForMnemonic(mnemonic)
-  const vault = { ciphertextHex, saltHex, credentialId, prf: Boolean(body.prfKeyHex) }
 
-  const isParent = invite.token === f.parentInviteToken && !f.parent
-  let memberId: string | undefined
-  if (isParent) {
-    f.parent = { name: invite.name, address, vault }
-  } else {
-    memberId = randomUUID()
-    f.members.push({ id: memberId, name: invite.name, address, vault, joinedAt: Date.now() })
-  }
+  const isParent = invite.token === family.parentInviteToken && !family.parent
+  const memberId = isParent ? undefined : randomUUID()
+
+  putVault({
+    credentialId, ciphertextHex, saltHex, prf: Boolean(body.prfKeyHex),
+    familyId: family.id, role: isParent ? 'parent' : 'member', memberId,
+    address, name: invite.name,
+  })
+
+  if (isParent) family.parent = { name: invite.name, address, credentialId }
+  else family.members.push({ id: memberId!, name: invite.name, address, credentialId, joinedAt: Date.now() })
   invite.usedBy = address
-  save()
+  saveFamily(family)
 
-  const session = await createSession(isParent ? 'parent' : 'member', memberId, mnemonic)
+  const session = createSession({
+    familyId: family.id, role: isParent ? 'parent' : 'member', memberId,
+    credentialId, address, name: invite.name,
+  })
   setCookie(c, COOKIE, session.id, { httpOnly: true, sameSite: 'Lax', path: '/' })
 
-  // Fund the parent's account and set the paymaster's allowance as part of
-  // signing up — not as a surprise inside their first deposit. Runs in the
-  // background so onboarding stays a two-tap flow; the Pot tab reports it.
-  if (isParent) bootstrapParent(session)
+  // Fund the parent's account as part of signing up rather than surprising
+  // them inside their first deposit. Needs the key, so it runs here while we
+  // still hold the mnemonic — and disposes it when done.
+  if (isParent) bootstrapParent({ familyId: family.id, address, mnemonic })
 
-  return c.json({ role: session.role, address, credentialId })
+  return c.json({ role: session.role, address, credentialId, familyName: family.name })
 })
 
 joinRoutes.post('/api/session', async (c) => {
   const body = (await c.req.json()) as KeySource & { credentialId: string }
-  const found = findByCredentialId(body.credentialId)
-  if (!found) return c.json({ error: 'No account for this passkey on this server.' }, 404)
-  let mnemonic: string
+  const vault = getVault(body.credentialId)
+  if (!vault) return c.json({ error: 'No account for this passkey.' }, 404)
+
+  // Unlocking proves the key works before a session is handed out; the
+  // mnemonic is used for nothing else here and goes out of scope immediately.
   try {
-    mnemonic = await openVaultEntry(found.vault, body)
+    await openVaultEntry(vault, body)
   } catch {
     return c.json({ error: 'Could not unlock — wrong key or passphrase.' }, 401)
   }
-  const session = await createSession(found.role, found.member?.id, mnemonic)
+
+  const family = getFamily(vault.familyId)
+  if (!family) return c.json({ error: 'That family no longer exists.' }, 404)
+
+  const session = createSession({
+    familyId: vault.familyId, role: vault.role, memberId: vault.memberId,
+    credentialId: vault.credentialId, address: vault.address, name: vault.name,
+  })
   setCookie(c, COOKIE, session.id, { httpOnly: true, sameSite: 'Lax', path: '/' })
-  return c.json({ role: session.role, address: session.address })
+  return c.json({ role: session.role, address: vault.address, familyName: family.name })
 })
 
 joinRoutes.post('/api/logout', (c) => {
@@ -101,11 +118,13 @@ joinRoutes.post('/api/logout', (c) => {
 
 joinRoutes.get('/api/whoami', (c) => {
   const s = currentSession(c)
-  // Whether a family exists is part of "who am I" for a signed-out visitor:
-  // it decides whether they can start one or should be signing in. Without it
-  // the app offers an action that cannot succeed.
-  const f = getFamily()
-  const family = f ? { exists: true, name: f.name, claimed: Boolean(f.parent) } : { exists: false }
-  if (!s) return c.json({ role: null, family })
-  return c.json({ role: s.role, address: s.address, memberId: s.memberId ?? null, family })
+  if (!s) return c.json({ role: null })
+  const family = getFamily(s.familyId)
+  return c.json({
+    role: s.role,
+    address: s.address,
+    memberId: s.memberId ?? null,
+    credentialId: s.credentialId,
+    familyName: family?.name ?? null,
+  })
 })

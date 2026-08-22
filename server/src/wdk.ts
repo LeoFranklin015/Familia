@@ -1,7 +1,7 @@
 // WDK account factory and session cache. One WDK instance per unlocked
 // session, disposed on expiry so keys never outlive their session.
 import WDK from '@tetherto/wdk'
-import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
+import WalletManagerEvm7702Gasless, { WalletAccountReadOnlyEvm7702Gasless } from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { randomBytes } from 'node:crypto'
 import {
   AAVE, BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, PAYMASTER_SERVICE_URL, POLICY_ID, RPC_URL, USDT_PAYMASTER,
@@ -85,6 +85,29 @@ export function createUsdtPayingWdk(mnemonic: string): { wdk: WDK; getAccount: (
   return { wdk, getAccount: () => wdk.getAccount('ethereum', 0) as Promise<unknown> as Promise<GaslessAccount> }
 }
 
+/**
+ * Price an operation in USD₮ without signing it — and therefore without a key.
+ *
+ * Quoting is a read, so it must not require the person to authorise anything;
+ * they should see the fee *before* deciding to. WDK's read-only account builds
+ * the same user operation and asks the paymaster what it costs.
+ */
+export async function quoteUnsigned(address: string, txs: unknown): Promise<bigint> {
+  const readOnly = new WalletAccountReadOnlyEvm7702Gasless(address, {
+    provider: RPC_URL,
+    bundlerUrl: BUNDLER_URL,
+    delegationAddress: DELEGATION_ADDRESS,
+    isSponsored: false,
+    paymasterUrl: PAYMASTER_SERVICE_URL,
+    paymasterAddress: USDT_PAYMASTER,
+    paymasterToken: { address: AAVE.ASSET },
+  } as never)
+  const { fee } = await (readOnly as unknown as {
+    quoteSendTransaction(tx: unknown): Promise<{ fee: bigint }>
+  }).quoteSendTransaction(txs)
+  return fee
+}
+
 /** Derive the account address for a mnemonic without keeping anything. */
 export async function addressForMnemonic(mnemonic: string): Promise<string> {
   const { wdk, getAccount } = createWdk(mnemonic)
@@ -137,48 +160,35 @@ function normalizeLogs(logs: unknown): Log[] {
   return Array.isArray(parsed) ? parsed.filter((l): l is Log => Boolean(l && typeof l.address === 'string')) : []
 }
 
-// ------------------------------------------------------------------ sessions
+// ------------------------------------------------- identity and authorisation
+//
+// A session says who you are. It holds no key, so a stolen cookie can read
+// this household's state and nothing else — it cannot move money.
+//
+// Every write instead carries a fresh key source: the PRF output a passkey
+// re-derives at that moment, or a passphrase. The seed is reconstructed for
+// the length of one operation and disposed in a finally block, so the window
+// in which this process could sign anything is a single request rather than a
+// 45-minute session.
 export type Session = {
   id: string
+  familyId: string
   role: 'parent' | 'member'
   memberId?: string
+  credentialId: string
   address: string
-  /** Sponsored. Members only ever use this; a parent uses it to bootstrap. */
-  account: GaslessAccount
-  /** Parents only: the same key paying its own fees in USD₮. */
-  usdtPayer?: GaslessAccount
-  dispose: () => void
+  name: string
   expiresAt: number
 }
 
-const SESSION_TTL_MS = 45 * 60 * 1000
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000 // identity only; grants no spending
 const sessions = new Map<string, Session>()
 
-export async function createSession(role: 'parent' | 'member', memberId: string | undefined, mnemonic: string): Promise<Session> {
-  const { wdk, getAccount } = createWdk(mnemonic, { memberGuard: role === 'member' })
-  const account = await getAccount()
-
-  // Members are sponsored, always — a child should never need a token balance
-  // to spend their allowance. Only the parent pays their own way.
-  let payer: { wdk: WDK; account: GaslessAccount } | undefined
-  if (role === 'parent' && USDT_PAYMASTER) {
-    const p = createUsdtPayingWdk(mnemonic)
-    payer = { wdk: p.wdk, account: await p.getAccount() }
-  }
-
-  const session: Session = {
-    id: randomBytes(24).toString('hex'),
-    role,
-    memberId,
-    address: await account.getAddress(),
-    account,
-    usdtPayer: payer?.account,
-    dispose: () => {
-      wdk.dispose()
-      payer?.wdk.dispose()
-    },
-    expiresAt: Date.now() + SESSION_TTL_MS,
-  }
+export function createSession(v: {
+  familyId: string; role: 'parent' | 'member'; memberId?: string
+  credentialId: string; address: string; name: string
+}): Session {
+  const session: Session = { ...v, id: randomBytes(24).toString('hex'), expiresAt: Date.now() + SESSION_TTL_MS }
   sessions.set(session.id, session)
   return session
 }
@@ -187,22 +197,33 @@ export function getSession(id: string | undefined): Session | undefined {
   if (!id) return undefined
   const s = sessions.get(id)
   if (!s) return undefined
-  if (Date.now() > s.expiresAt) {
-    destroySession(id)
-    return undefined
-  }
-  s.expiresAt = Date.now() + SESSION_TTL_MS // sliding
+  if (Date.now() > s.expiresAt) { sessions.delete(id); return undefined }
+  s.expiresAt = Date.now() + SESSION_TTL_MS
   return s
 }
 
-export function destroySession(id: string) {
-  const s = sessions.get(id)
-  if (s) {
-    s.dispose()
-    sessions.delete(id)
-  }
-}
+export function destroySession(id: string) { sessions.delete(id) }
 
 setInterval(() => {
-  for (const [id, s] of sessions) if (Date.now() > s.expiresAt) destroySession(id)
+  for (const [id, s] of sessions) if (Date.now() > s.expiresAt) sessions.delete(id)
 }, 60_000).unref()
+
+/**
+ * Run one operation with a live signing account, then destroy it.
+ *
+ * The account exists only inside `fn`. Whatever happens — success, revert,
+ * thrown error — the WDK instance is disposed on the way out, which is what
+ * keeps the key's lifetime equal to the request's.
+ */
+export async function withAccount<T>(
+  mnemonic: string,
+  opts: { memberGuard?: boolean; payFeesInUsdt?: boolean },
+  fn: (account: GaslessAccount) => Promise<T>,
+): Promise<T> {
+  const made = opts.payFeesInUsdt ? createUsdtPayingWdk(mnemonic) : createWdk(mnemonic, { memberGuard: opts.memberGuard })
+  try {
+    return await fn(await made.getAccount())
+  } finally {
+    made.wdk.dispose()
+  }
+}

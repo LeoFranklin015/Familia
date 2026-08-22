@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type MemberState } from '../api'
+import { approve, knownCredentialId, NeedsPassphrase, post } from '../auth'
+import { Sheet } from '../components/Sheet'
 import { TopBar } from '../App'
 import { Empty, Icon, Money, ScreenSkeleton } from '../components/ui'
 
@@ -26,6 +28,8 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const [amount, setAmount] = useState('')
   const [to, setTo] = useState('')
   const [state, setState] = useState<SendState>({ kind: 'idle' })
+  const [askPass, setAskPass] = useState(false)
+  const [passphrase, setPassphrase] = useState('')
   const amountRef = useRef<HTMLInputElement>(null)
 
   const load = () => api.get<MemberState>('/api/me').then(setMe).catch(() => {})
@@ -62,16 +66,37 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const busy = state.kind === 'sending' || state.kind === 'asking'
   const ready = Boolean(to) && amt > 0
 
-  const submit = async () => {
+  /** Paying asks for a face first — the same confirmation a phone puts in
+   *  front of every other payment. */
+  const submit = async (auth?: Parameters<typeof post>[2]) => {
+    let approval = auth
+    if (!approval) {
+      try {
+        approval = await approve()
+      } catch (e) {
+        if (e instanceof NeedsPassphrase) { setAskPass(true); return }
+        setState({ kind: 'error', message: 'Approval was cancelled.' })
+        return
+      }
+    }
     setState({ kind: overLimit ? 'asking' : 'sending' })
     try {
-      const r = await api.post<{ kind: 'spent' | 'asked'; txHash?: string }>('/api/spend', { to, amount })
+      const r = await post<{ kind: 'spent' | 'asked'; txHash?: string }>('/api/spend', { to, amount }, approval)
       setState(r.kind === 'spent' ? { kind: 'sent', txHash: r.txHash } : { kind: 'asked' })
       setAmount('')
       load()
     } catch (e) {
       setState({ kind: 'error', message: e instanceof Error ? e.message : 'Something went wrong.' })
     }
+  }
+
+  const submitWithPassphrase = () => {
+    const credentialId = knownCredentialId()
+    if (!credentialId) { setState({ kind: 'error', message: 'No account on this device.' }); return }
+    setAskPass(false)
+    const pass = passphrase
+    setPassphrase('')
+    submit({ credentialId, passphrase: pass })
   }
 
   return (
@@ -155,7 +180,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
         <div className="actionbar__inner">
           <button
             className={`btn btn--block ${overLimit ? 'btn--ask' : 'btn--primary'}`}
-            onClick={submit}
+            onClick={() => submit()}
             disabled={busy || !ready}
           >
             {busy && <span className="spinner" />}
@@ -167,6 +192,16 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
           </button>
         </div>
       </div>
+
+      <Sheet open={askPass} title="Confirm it's you" onClose={() => setAskPass(false)}>
+        <p className="hint">This device can't use Face ID, so your passphrase approves the payment.</p>
+        <label htmlFor="pp">Your passphrase</label>
+        <input id="pp" type="password" value={passphrase} autoFocus enterKeyHint="go"
+          onChange={(e) => setPassphrase(e.target.value)} />
+        <button className="btn btn--primary btn--block mt4" disabled={passphrase.length < 8} onClick={submitWithPassphrase}>
+          Approve
+        </button>
+      </Sheet>
     </div>
   )
 }

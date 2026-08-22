@@ -26,9 +26,8 @@ export const api = {
 export type Whoami = {
   role: 'parent' | 'member' | null
   address?: string
-  /** Present for signed-out visitors too: whether this server already has a
-   *  family, which decides whether they can start one or should sign in. */
-  family: { exists: boolean; name?: string; claimed?: boolean }
+  credentialId?: string
+  familyName?: string | null
 }
 
 export type Merchant = { name: string; address: string }

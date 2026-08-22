@@ -236,6 +236,47 @@ server-side, not by hiding UI:
   clears, and their own payments — nothing more — and `/api/state` refuses them
   outright. A child's app is one question: who are you paying, and how much.
 
+### Authorisation: every write, not every session
+
+Reads come from a session cookie. **Writes don't.** Each one carries the key
+material at the moment it happens — the PRF output a passkey re-derives, or a
+passphrase — and the server opens the vault, signs, and disposes the account in
+a `finally` block. The window in which this process could sign anything is one
+request, not a session.
+
+That split has a consequence worth stating: **a stolen session cookie can read
+this household's state and cannot move a cent.** Verified — the same cookie
+that returns `/api/state` gets
+`{"error":"This needs your approval — confirm with Face ID.","needsAuth":true}`
+from `/api/deposit`.
+
+It applies to the child too. Paying asks for a face first, which is the
+confirmation a phone already puts in front of every other payment.
+
+Where a passkey isn't available the same operation accepts a passphrase, asked
+for each time — caching it would defeat the point of asking.
+
+### Where keys live
+
+```
+data/families/<familyId>.json    household data — members, limits, history
+data/vaults/<credentialId>.json  encrypted entropy, one per account, mode 0600
+```
+
+The split is along the line that matters: family records are ordinary
+application data, key material is not. A vault holds ciphertext, a public salt,
+and the routing to identify its owner — nothing that can produce the key. The
+directory is `0700`, the files `0600`.
+
+Sessions hold no key at all, only identity.
+
+### Many households, not one
+
+The server keys families by id and accounts by credential id, so it hosts as
+many as you point at it — signing in resolves your credential to a vault, the
+vault to a family, and the family to a role. Invite tokens are searched across
+all of them.
+
 ### The passkey layer — "passkey-gated", not passkey-native
 
 ```
@@ -254,7 +295,7 @@ WDK runs in a small Node worker, mirroring WDK's own CLI daemon architecture,
 and the browser does WebAuthn and UI only. This is not a stylistic choice:
 `wdk-secret-manager` depends on native modules that cannot be bundled for a
 browser (field note 3). The PRF output crosses only the TLS tunnel to that
-worker and lives in memory for the session.
+worker, and lives there for the length of one operation.
 
 ## Why Base Sepolia
 
