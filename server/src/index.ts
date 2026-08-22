@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { joinRoutes } from './routes/join.js'
 import { parentRoutes } from './routes/parent.js'
 import { memberRoutes } from './routes/member.js'
+import { paymasterService } from './paymaster-service.js'
 
 mkdirSync(new URL('../data', import.meta.url).pathname, { recursive: true })
 
@@ -18,6 +19,8 @@ app.onError((err, c) => {
 app.route('/', joinRoutes)
 app.route('/', parentRoutes)
 app.route('/', memberRoutes)
+// Our ERC-7677 paymaster service, so USD₮ can be the gas token here.
+app.route('/', paymasterService)
 
 // The built web app; /join/<token> etc. fall through to the SPA.
 app.use('/assets/*', serveStatic({ root: '../web/dist' }))
