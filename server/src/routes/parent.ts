@@ -4,9 +4,9 @@
 import { Hono, type Context } from 'hono'
 import type { Session } from '../wdk.js'
 import {
-  AAVE, MERCHANTS, aAssetRead, assetRead, buildDepositBatch, buildGrantBatch, buildRevokeBatch,
+  AAVE, MERCHANTS, aAssetRead, assetRead, buildGrantBatch, buildRevokeBatch,
   canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits, managerIface,
-  managerRead, MANAGER, parseUnits, USDT_PAYMASTER,
+  managerRead, MANAGER, parseUnits, planDeposit, USDT_PAYMASTER,
 } from '../chain.js'
 import { mustFamily, record, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -71,13 +71,20 @@ parentRoutes.post('/api/quote', async (c) => {
   try {
     txs = await buildForAction(s, body)
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : 'cannot quote that' }, 400)
+    // A blocked action (e.g. the faucet timelock) is not a broken quote — say
+    // what's actually wrong instead of showing a fee we can't compute.
+    return c.json({ feeMode, fee: null, symbol: AAVE.SYMBOL, blocked: e instanceof Error ? e.message : 'cannot quote that' })
   }
   if (!txs) return c.json({ feeMode: 'sponsored', fee: '0', symbol: AAVE.SYMBOL })
 
   try {
     const quote = await account.quoteSendTransaction(txs)
-    return c.json({ feeMode, fee: formatUnits(quote.fee), symbol: AAVE.SYMBOL, paidIn: 'USD₮' })
+    return c.json({
+      feeMode, fee: formatUnits(quote.fee), symbol: AAVE.SYMBOL, paidIn: 'USD₮',
+      // What this one operation is actually going to do on-chain, so the
+      // faucet mint is never a silent side effect.
+      steps: describe(txs),
+    })
   } catch (e) {
     // A quote can fail for real reasons (the paymaster refusing, no allowance).
     // Say so rather than showing a made-up number.
@@ -85,13 +92,31 @@ parentRoutes.post('/api/quote', async (c) => {
   }
 })
 
+/** Plain-language description of a batch, by target and selector, so the UI can
+ *  show every call the single operation makes — including a faucet mint. */
+function describe(txs: Array<{ to: string; data: string }>): string[] {
+  return txs.map((tx) => {
+    const to = tx.to.toLowerCase()
+    const sel = tx.data.slice(0, 10)
+    if (to === AAVE.FAUCET.toLowerCase()) return `Get test ${AAVE.SYMBOL} from the Aave faucet`
+    if (to === AAVE.POOL.toLowerCase()) return `Supply it to Aave`
+    if (to === AAVE.ASSET.toLowerCase() && sel === erc20.getFunction('approve')!.selector) return `Approve ${AAVE.SYMBOL}`
+    if (to === AAVE.A_ASSET.toLowerCase()) return `Approve the spend manager for aUSD₮`
+    if (to === MANAGER.toLowerCase()) return `Update the on-chain permission`
+    return `Call ${tx.to.slice(0, 10)}…`
+  })
+}
+
 /** The same batch the corresponding action would send, so a quote is never a
  *  guess about a different transaction. */
 async function buildForAction(s: Session, body: Record<string, unknown>) {
   const f = mustFamily()
   switch (body.action) {
-    case 'deposit':
-      return buildDepositBatch(s.address, parseUnits(String(body.amount ?? '0')), { withFeeBuffer: true })
+    case 'deposit': {
+      const plan = await planDeposit(s.address, parseUnits(String(body.amount ?? '0')))
+      if (!plan.ok) throw new Error(plan.reason)
+      return plan.txs
+    }
     case 'grant': {
       const member = f.members.find((m) => m.id === body.memberId)
       if (!member) throw new Error('unknown member')
@@ -120,11 +145,14 @@ parentRoutes.post('/api/deposit', async (c) => {
   const { amount } = await c.req.json()
   const value = parseUnits(amount)
 
-  // A deposit also tops up the parent's USD₮ fee buffer and re-approves the
-  // paymaster, so the account can pay its own way from here on. The first one
-  // is necessarily sponsored — there is no USD₮ yet to pay a fee with.
+  // A deposit supplies from what the account already holds and only visits the
+  // faucet when it must — the faucet permits one mint per address per period,
+  // so minting on every deposit would work exactly once.
+  const plan = await planDeposit(s.address, value)
+  if (!plan.ok) return c.json({ error: plan.reason }, 409)
+
   const { account, feeMode } = await payingAccount(s)
-  const { hash } = await account.sendTransaction(buildDepositBatch(s.address, value, { withFeeBuffer: true }))
+  const { hash } = await account.sendTransaction(plan.txs)
   const result = await waitForUserOp(account, hash)
   if (!result.success) return c.json({ error: 'Deposit did not go through — try again.' }, 502)
   const f = mustFamily()

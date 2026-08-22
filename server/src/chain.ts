@@ -55,6 +55,17 @@ export const PAYMASTER_SERVICE_URL =
  *  all because a fee in USD₮ cannot be paid out of an Aave position. */
 export const FEE_BUFFER = 5_000000n // 5 USD₮
 
+/**
+ * How much test USD₮ to pull the one time the faucet lets us.
+ *
+ * The Aave testnet faucet enforces a per-address mint timelock — one mint per
+ * period, regardless of size, and it happily mints very large amounts. So we
+ * take a generous amount once and fund every later deposit out of the balance
+ * we already hold. Minting per deposit would work exactly once and then fail
+ * with "Mint timelock exceeded" for the rest of the day.
+ */
+export const MINT_CHUNK = 100_000_000000n // 100,000 USD₮
+
 // Demo merchants the member can pay. Deterministic, obviously-test addresses.
 export const MERCHANTS = [
   { name: 'Corner Store', address: '0x1111000000000000000000000000000000001111' },
@@ -121,21 +132,77 @@ export type Tx = { to: string; value: bigint; data: string }
 /** Mint test USD₮ from the Aave faucet, approve the savings position, and
  *  deposit — one batched, sponsored UserOperation, from an account that starts
  *  with nothing at all (not even gas). */
-export function buildDepositBatch(parent: string, amount: bigint, opts: { withFeeBuffer?: boolean } = {}): Tx[] {
-  // Mint a little more than goes into Aave, so the parent is left holding USD₮
-  // to pay their own fees with from here on.
-  const buffer = opts.withFeeBuffer ? FEE_BUFFER : 0n
-  const txs: Tx[] = [
-    { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount + buffer]) },
+export function buildDepositBatch(
+  parent: string,
+  amount: bigint,
+  opts: { mint?: bigint; approvePaymaster?: bigint } = {},
+): Tx[] {
+  const txs: Tx[] = []
+  if (opts.mint && opts.mint > 0n) {
+    txs.push({ to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, opts.mint]) })
+  }
+  txs.push(
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
     { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
-  ]
-  if (opts.withFeeBuffer && USDT_PAYMASTER) {
+  )
+  if (opts.approvePaymaster && opts.approvePaymaster > 0n && USDT_PAYMASTER) {
     // Approving the paymaster is what authorises it to charge this account —
-    // there is no signed voucher. Bounded to the buffer, never unlimited.
-    txs.push({ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, buffer]) })
+    // there is no signed voucher. Bounded, never unlimited.
+    txs.push({ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, opts.approvePaymaster]) })
   }
   return txs
+}
+
+/** Would the faucet let this account mint right now? It refuses with
+ *  "Mint timelock exceeded" once per period, so ask before building a batch
+ *  around it rather than discovering it in a reverted simulation. */
+export async function faucetWouldMint(parent: string, amount: bigint): Promise<boolean> {
+  try {
+    await provider.call({
+      to: AAVE.FAUCET,
+      from: parent,
+      data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]),
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Plan a deposit against what the account already holds, minting only when
+ *  it must and only when the faucet allows. */
+export async function planDeposit(parent: string, amount: bigint): Promise<
+  | { ok: true; txs: Tx[]; minted: bigint }
+  | { ok: false; reason: string }
+> {
+  const held = (await assetRead.balanceOf(parent)) as bigint
+  const allowance = USDT_PAYMASTER
+    ? ((await assetRead.allowance(parent, USDT_PAYMASTER)) as bigint)
+    : 0n
+
+  // Keep a fee buffer topped up alongside the deposit.
+  const wantBuffer = USDT_PAYMASTER && allowance < FEE_BUFFER ? FEE_BUFFER : 0n
+  const needed = amount + wantBuffer
+
+  let mint = 0n
+  if (held < needed) {
+    mint = MINT_CHUNK > needed - held ? MINT_CHUNK : needed - held
+    if (!(await faucetWouldMint(parent, mint))) {
+      const spendable = held > wantBuffer ? held - wantBuffer : 0n
+      return {
+        ok: false,
+        reason: spendable > 0n
+          ? `The test faucet allows one top-up per day per account and this one has used it. You can still add up to ${formatUnits(spendable)} ${AAVE.SYMBOL} from what this account already holds.`
+          : 'The test faucet allows one top-up per day per account and this one has used it. Try again tomorrow, or start a family on a fresh account.',
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    minted: mint,
+    txs: buildDepositBatch(parent, amount, { mint, approvePaymaster: wantBuffer }),
+  }
 }
 
 /** Whether this account can currently pay its own fees in USD₮: it needs a

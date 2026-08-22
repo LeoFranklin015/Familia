@@ -203,3 +203,12 @@ h2.plain { text-transform: none; letter-spacing: -0.01em; font-size: 1.15rem; co
   font-size: 0.75rem; color: var(--ink-3);
   border-left: 1px solid var(--line); padding-left: 8px; margin-left: 2px;
 }
+
+.fee-block { margin-top: 12px; }
+.fee-block .fee-line { margin-top: 0; border-radius: 9px 9px 0 0; border-bottom: 0; }
+.steps-mini {
+  margin: 0; padding: 8px 12px 10px 30px; list-style: decimal;
+  background: var(--paper); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 9px 9px; font-size: 0.8rem; color: var(--ink-2);
+}
+.steps-mini li { padding: 1px 0; }

@@ -34,16 +34,34 @@ function FeeLine({ quote, symbol }: { quote: FeeQuote | null; symbol: string }) 
   if (quote.feeMode === 'sponsored') {
     return <div className="fee-line">Network fee: <b>free</b> — your first operation is on us.</div>
   }
+  if (quote.blocked) {
+    // Something is genuinely in the way — say what, rather than hiding it
+    // behind a vague "couldn't quote".
+    return <div className="fee-line warn">{quote.blocked}</div>
+  }
   if (quote.fee == null) {
-    return <div className="fee-line warn">Network fee: couldn't quote right now.</div>
+    return (
+      <div className="fee-line warn">
+        Network fee: couldn't work that out just now. {quote.error ? `(${quote.error})` : ''}
+      </div>
+    )
   }
   // The quote is a ceiling — max gas at max fee — while the paymaster charges
   // the actual cost once the operation has run. "Up to" is the honest word;
   // the real figure is reported back after signing and is usually lower.
   return (
-    <div className="fee-line">
-      Network fee <b className="num">up to {quote.fee} {symbol}</b>
-      <span className="fee-note">charged in {symbol}, not ETH — you pay the actual cost</span>
+    <div className="fee-block">
+      <div className="fee-line">
+        Network fee <b className="num">up to {quote.fee} {symbol}</b>
+        <span className="fee-note">charged in {symbol}, not ETH — you pay the actual cost</span>
+      </div>
+      {quote.steps && quote.steps.length > 0 && (
+        // One signature, several on-chain calls. Listing them means a faucet
+        // top-up is never something that just quietly happened.
+        <ol className="steps-mini">
+          {quote.steps.map((step, i) => <li key={i}>{step}</li>)}
+        </ol>
+      )}
     </div>
   )
 }

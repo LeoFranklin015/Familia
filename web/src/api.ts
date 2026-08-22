@@ -77,6 +77,10 @@ export type FeeQuote = {
   fee: string | null
   symbol: string
   paidIn?: string
+  /** Why this action can't proceed at all — not a quoting failure. */
+  blocked?: string
+  /** Every on-chain call this single operation will make, in order. */
+  steps?: string[]
   error?: string
 }
 
