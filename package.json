@@ -1,0 +1,13 @@
+{
+  "name": "kin-root",
+  "private": true,
+  "type": "module",
+  "description": "Root workspace: spike scripts and shared WDK deps for Kin",
+  "dependencies": {
+    "@bgd-labs/aave-address-book": "^4.0.0",
+    "@tetherto/wdk": "1.0.0-beta.16",
+    "@tetherto/wdk-secret-manager": "1.0.0-beta.3",
+    "@tetherto/wdk-wallet-evm-7702-gasless": "1.0.0-beta.4",
+    "ethers": "^6.13.0"
+  }
+}
