@@ -3,7 +3,7 @@
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { randomBytes } from 'node:crypto'
-import { BUNDLER_URL, DELEGATION_ADDRESS, POLICY_ID, SEPOLIA_RPC_URL } from './chain.js'
+import { BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, POLICY_ID, SEPOLIA_RPC_URL } from './chain.js'
 
 // The concrete account type is resolved at runtime; keep a structural type.
 export type GaslessAccount = {
@@ -19,16 +19,44 @@ export type GaslessAccount = {
   dispose(): void
 }
 
-export function createWdk(mnemonic: string): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
+export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
   // Cast: the beta .d.ts types registerWallet against the base WalletManager,
   // whose config is optional — structurally fine at runtime.
-  const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as Parameters<WDK['registerWallet']>[1], {
+  const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as unknown as Parameters<WDK['registerWallet']>[1], {
     provider: SEPOLIA_RPC_URL,
     bundlerUrl: BUNDLER_URL,
     delegationAddress: DELEGATION_ADDRESS,
     isSponsored: true,
     ...(POLICY_ID ? { sponsorshipPolicyId: POLICY_ID } : {}),
-  })
+  } as unknown as Parameters<WDK['registerWallet']>[2])
+
+  if (opts.memberGuard) {
+    // WDK's local policy engine as defense in depth: a member's session
+    // account may only ever talk to the ScopedSpendManager. This is a UX/
+    // safety affordance on the Node worker — the contract is the enforcement.
+    wdk.registerPolicy({
+      id: 'member-manager-only',
+      name: 'Members transact only with the spend manager',
+      scope: 'project',
+      wallet: 'ethereum',
+      rules: [
+        {
+          name: 'deny-non-manager-targets',
+          reason: 'Member accounts may only call the ScopedSpendManager.',
+          operation: ['sendTransaction', 'signTransaction', 'transfer', 'approve'],
+          action: 'DENY',
+          conditions: [
+            (ctx: { args: readonly unknown[] }) => {
+              const first = ctx.args[0] as { to?: string } | Array<{ to?: string }> | undefined
+              const txs = Array.isArray(first) ? first : [first]
+              return txs.some((t) => (t?.to ?? '').toLowerCase() !== MANAGER.toLowerCase())
+            },
+          ],
+        },
+      ],
+    } as Parameters<WDK['registerPolicy']>[0])
+  }
+
   return { wdk, getAccount: () => wdk.getAccount('ethereum', 0) as Promise<unknown> as Promise<GaslessAccount> }
 }
 
@@ -91,7 +119,7 @@ const SESSION_TTL_MS = 45 * 60 * 1000
 const sessions = new Map<string, Session>()
 
 export async function createSession(role: 'parent' | 'member', memberId: string | undefined, mnemonic: string): Promise<Session> {
-  const { wdk, getAccount } = createWdk(mnemonic)
+  const { wdk, getAccount } = createWdk(mnemonic, { memberGuard: role === 'member' })
   const account = await getAccount()
   const session: Session = {
     id: randomBytes(24).toString('hex'),

@@ -128,6 +128,33 @@ export function eventArgFromLogs(logs: Array<{ address: string; topics: string[]
   return undefined
 }
 
+/** Map a bundler simulation revert to the manager's named error, in human
+ *  words. The revert data hides inside nested error messages as hex. */
+const MANAGER_ERRORS: Array<[string, string]> = [
+  ['Revoked()', 'The contract refused it: this allowance was revoked on-chain.'],
+  ['Expired()', 'The contract refused it: this allowance has expired.'],
+  ['OverPerTxCap(uint256,uint256)', 'The contract refused it: over the per-purchase limit.'],
+  ['OverPeriodCap(uint256,uint256)', 'The contract refused it: over the limit for this period.'],
+  ['RecipientNotAllowed(address)', "The contract refused it: that recipient isn't on the allowed list."],
+  ['NotSpender()', 'The contract refused it: this account is not the spender.'],
+  ['UnknownId()', 'The contract refused it: unknown allowance.'],
+  ['RequestExpired()', 'The contract refused it: this ask expired.'],
+  ['TransferFailed()', 'The contract refused it: the funds could not be pulled.'],
+]
+const SELECTOR_TO_HUMAN = new Map(MANAGER_ERRORS.map(([sig, msg]) => [ethers.id(sig).slice(2, 10), msg]))
+
+export function humanizeManagerRevert(err: unknown): string | null {
+  const messages: string[] = []
+  for (let e = err as { message?: string; cause?: unknown } | undefined; e; e = e.cause as never) {
+    if (typeof e.message === 'string') messages.push(e.message)
+  }
+  const hex = messages.join(' ').match(/0x[0-9a-fA-F]{8,}/g)?.join('') ?? ''
+  for (const [selector, human] of SELECTOR_TO_HUMAN) {
+    if (hex.includes(selector)) return human
+  }
+  return null
+}
+
 function requireEnv(name: string): string {
   const v = process.env[name]
   if (!v) throw new Error(`Missing env var ${name} — copy .env.example and fill it in.`)

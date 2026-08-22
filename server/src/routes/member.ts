@@ -3,7 +3,7 @@
 import { Hono, type Context } from 'hono'
 import { ethers } from 'ethers'
 import {
-  AAVE, MERCHANTS, eventArgFromLogs, formatUnits, managerIface, managerRead, MANAGER, parseUnits,
+  AAVE, MERCHANTS, eventArgFromLogs, formatUnits, humanizeManagerRevert, managerIface, managerRead, MANAGER, parseUnits,
 } from '../chain.js'
 import { mustFamily, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -57,29 +57,37 @@ memberRoutes.post('/api/spend', async (c) => {
   const ctx = memberOf(c)
   if (!ctx) return c.json({ error: 'member only' }, 403)
   const { s, member } = ctx
-  if (!member.scopeId || member.revoked) {
+  if (!member.scopeId) {
     return c.json({ error: 'You have no spending allowance yet — ask a parent.' }, 409)
   }
 
-  const { to, amount } = await c.req.json()
+  // `force` skips the local pre-checks so the on-chain enforcement itself is
+  // demonstrable — the manager reverts (e.g. Revoked()) at simulation.
+  const { to, amount, force = false } = await c.req.json()
   if (!ethers.isAddress(to)) return c.json({ error: 'Pick a real recipient.' }, 400)
   const value = parseUnits(amount)
   if (value <= 0n) return c.json({ error: 'Enter an amount above zero.' }, 400)
 
   const scope = await managerRead.getScope(member.scopeId)
-  if (scope.revoked) return c.json({ error: 'Your spending was turned off by a parent.' }, 409)
+  if (scope.revoked && !force) return c.json({ error: 'Your spending was turned off by a parent.' }, 409)
 
-  const spendableNow = (await managerRead.spendable(member.scopeId)) as bigint
+  const spendableNow = force ? value : ((await managerRead.spendable(member.scopeId)) as bigint)
 
   if (value <= spendableNow) {
     // Within limits: the member's own account calls spend(); funds leave the
     // parent's Aave position and reach the merchant in this one transaction.
-    const { hash } = await s.account.sendTransaction({
-      to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('spend', [member.scopeId, to, value]),
-    })
-    const result = await waitForUserOp(s.account, hash)
-    if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
-    return c.json({ kind: 'spent', txHash: result.txHash, userOpHash: hash })
+    try {
+      const { hash } = await s.account.sendTransaction({
+        to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('spend', [member.scopeId, to, value]),
+      })
+      const result = await waitForUserOp(s.account, hash)
+      if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
+      return c.json({ kind: 'spent', txHash: result.txHash, userOpHash: hash })
+    } catch (err) {
+      const human = humanizeManagerRevert(err)
+      if (human) return c.json({ error: human, onchainRevert: true }, 409)
+      throw err
+    }
   }
 
   // Over the cap: do NOT fail — turn it into an on-chain request.
