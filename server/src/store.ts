@@ -43,12 +43,14 @@ const PATH = new URL('../data/family.json', import.meta.url).pathname
 let family: Family | null = null
 
 export function getFamily(): Family | null {
-  if (family) return family
-  if (existsSync(PATH)) {
-    family = JSON.parse(readFileSync(PATH, 'utf8')) as Family
-    return family
+  // Check the file first: deleting it is the documented demo reset, so a
+  // cached copy must not outlive it.
+  if (!existsSync(PATH)) {
+    family = null
+    return null
   }
-  return null
+  if (!family) family = JSON.parse(readFileSync(PATH, 'utf8')) as Family
+  return family
 }
 
 export function createFamily(name: string, parentName: string): { family: Family; parentJoinToken: string } {
