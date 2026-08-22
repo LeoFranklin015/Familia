@@ -71,6 +71,15 @@ export type ParentState = {
   merchants: Merchant[]
 }
 
+export type FeeQuote = {
+  feeMode: 'usdt' | 'sponsored'
+  /** USD₮, or null if the paymaster refused to quote. */
+  fee: string | null
+  symbol: string
+  paidIn?: string
+  error?: string
+}
+
 /** What a member is allowed to know: their own name, whether they can pay,
  *  their own per-purchase limit, and their own history. Never the pot. */
 export type MemberState = {

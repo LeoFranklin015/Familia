@@ -5,8 +5,8 @@ import { Hono, type Context } from 'hono'
 import type { Session } from '../wdk.js'
 import {
   AAVE, MERCHANTS, aAssetRead, assetRead, buildDepositBatch, buildGrantBatch, buildRevokeBatch,
-  canPayFeesInUsdt, erc20, eventArgFromLogs, formatUnits, managerIface, managerRead, MANAGER,
-  parseUnits, USDT_PAYMASTER,
+  canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits, managerIface,
+  managerRead, MANAGER, parseUnits, USDT_PAYMASTER,
 } from '../chain.js'
 import { mustFamily, record, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -15,6 +15,7 @@ import { currentSession } from './join.js'
 type Env = { Variables: { session: Session } }
 export const parentRoutes = new Hono<Env>()
 
+parentRoutes.use('/api/quote', parentOnly)
 parentRoutes.use('/api/deposit', parentOnly)
 parentRoutes.use('/api/members/*', parentOnly)
 parentRoutes.use('/api/requests/*', parentOnly)
@@ -52,6 +53,68 @@ function outstandingCaps(extra: bigint = 0n): bigint {
   return total
 }
 
+/**
+ * What this operation will cost, quoted in USD₮ before it is signed.
+ *
+ * This is WDK's own `quoteSendTransaction` against the exact batch that would
+ * be sent, through our USD₮ paymaster — not an estimate we invent. If the
+ * account cannot pay in USD₮ yet (its very first operation), the answer is
+ * honestly "sponsored, nothing".
+ */
+parentRoutes.post('/api/quote', async (c) => {
+  const s = c.get('session')
+  const body = await c.req.json().catch(() => ({}))
+  const { account, feeMode } = await payingAccount(s)
+  if (feeMode === 'sponsored') return c.json({ feeMode, fee: '0', symbol: AAVE.SYMBOL })
+
+  let txs
+  try {
+    txs = await buildForAction(s, body)
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : 'cannot quote that' }, 400)
+  }
+  if (!txs) return c.json({ feeMode: 'sponsored', fee: '0', symbol: AAVE.SYMBOL })
+
+  try {
+    const quote = await account.quoteSendTransaction(txs)
+    return c.json({ feeMode, fee: formatUnits(quote.fee), symbol: AAVE.SYMBOL, paidIn: 'USD₮' })
+  } catch (e) {
+    // A quote can fail for real reasons (the paymaster refusing, no allowance).
+    // Say so rather than showing a made-up number.
+    return c.json({ feeMode, fee: null, symbol: AAVE.SYMBOL, error: e instanceof Error ? e.message : 'quote failed' })
+  }
+})
+
+/** The same batch the corresponding action would send, so a quote is never a
+ *  guess about a different transaction. */
+async function buildForAction(s: Session, body: Record<string, unknown>) {
+  const f = mustFamily()
+  switch (body.action) {
+    case 'deposit':
+      return buildDepositBatch(s.address, parseUnits(String(body.amount ?? '0')), { withFeeBuffer: true })
+    case 'grant': {
+      const member = f.members.find((m) => m.id === body.memberId)
+      if (!member) throw new Error('unknown member')
+      const periodCap = parseUnits(String(body.period ?? '0'))
+      return buildGrantBatch({
+        spender: member.address,
+        perTxCap: parseUnits(String(body.perTx ?? '0')),
+        periodCap,
+        periodLength: BigInt(Math.round(Number(body.periodLengthDays ?? 7) * 86400)),
+        expiry: 0n,
+        newAllowanceTotal: outstandingCaps(periodCap),
+      })
+    }
+    case 'revoke': {
+      const member = f.members.find((m) => m.id === body.memberId)
+      if (!member?.scopeId) throw new Error('member has no allowance')
+      return buildRevokeBatch(member.scopeId, outstandingCaps())
+    }
+    default:
+      return null
+  }
+}
+
 parentRoutes.post('/api/deposit', async (c) => {
   const s = c.get('session')
   const { amount } = await c.req.json()
@@ -67,8 +130,9 @@ parentRoutes.post('/api/deposit', async (c) => {
   const f = mustFamily()
   f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
   save()
+  const feeCharged = feeChargedFromLogs(result.logs)
   record({ kind: 'deposit', text: `Added ${amount} to the pot`, amount: String(amount), txHash: result.txHash })
-  return c.json({ txHash: result.txHash, userOpHash: hash, feeMode })
+  return c.json({ txHash: result.txHash, userOpHash: hash, feeMode, feeCharged })
 })
 
 parentRoutes.post('/api/members/:id/grant', async (c) => {
@@ -106,7 +170,7 @@ parentRoutes.post('/api/members/:id/grant', async (c) => {
     memberId: member.id,
     txHash: result.txHash,
   })
-  return c.json({ scopeId, txHash: result.txHash, feeMode })
+  return c.json({ scopeId, txHash: result.txHash, feeMode, feeCharged: feeChargedFromLogs(result.logs) })
 })
 
 parentRoutes.post('/api/members/:id/revoke', async (c) => {
@@ -125,7 +189,7 @@ parentRoutes.post('/api/members/:id/revoke', async (c) => {
   }
   save()
   record({ kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
-  return c.json({ txHash: result.txHash, feeMode })
+  return c.json({ txHash: result.txHash, feeMode, feeCharged: feeChargedFromLogs(result.logs) })
 })
 
 parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
@@ -164,7 +228,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
     memberId: req.memberId,
     txHash: result.txHash,
   })
-  return c.json({ txHash: result.txHash, feeMode })
+  return c.json({ txHash: result.txHash, feeMode, feeCharged: feeChargedFromLogs(result.logs) })
 })
 
 parentRoutes.get('/api/state', async (c) => {

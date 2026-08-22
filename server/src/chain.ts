@@ -93,6 +93,25 @@ export const managerIface = new ethers.Interface([
   'event Spent(bytes32 indexed id, address indexed to, uint256 amount, bytes32 requestId)',
 ])
 
+/** Our paymaster's settlement event — the authoritative record of what an
+ *  account was actually charged, in USD₮, after the operation ran. */
+export const paymasterIface = new ethers.Interface([
+  'event Charged(address indexed account, uint256 gasCostWei, uint256 usdtCharged)',
+])
+
+/** Pull the real USD₮ fee out of a userOp receipt, if our paymaster charged one. */
+export function feeChargedFromLogs(logs: Array<{ address: string; topics: string[]; data: string }>): string | null {
+  if (!USDT_PAYMASTER) return null
+  for (const log of logs) {
+    if (log.address.toLowerCase() !== USDT_PAYMASTER.toLowerCase()) continue
+    try {
+      const parsed = paymasterIface.parseLog(log)
+      if (parsed?.name === 'Charged') return formatUnits(parsed.args.usdtCharged as bigint)
+    } catch { /* not ours */ }
+  }
+  return null
+}
+
 export const managerRead = new ethers.Contract(MANAGER, managerIface, provider)
 export const assetRead = new ethers.Contract(AAVE.ASSET, erc20, provider)
 export const aAssetRead = new ethers.Contract(AAVE.A_ASSET, erc20, provider)

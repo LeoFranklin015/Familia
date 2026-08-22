@@ -1,8 +1,52 @@
 import { useEffect, useState } from 'react'
-import { api, type ParentState } from '../api'
+import { api, type FeeQuote, type ParentState } from '../api'
 import { TopBar } from '../App'
 
 type Tab = 'wallet' | 'family' | 'activity'
+
+/**
+ * The network fee for an operation, quoted in USD₮ before it is signed.
+ *
+ * The number comes from WDK quoting the exact batch that would be sent, so
+ * what is shown is what will be charged — not a guess. Debounced, because it
+ * re-quotes as the amount is typed.
+ */
+function useFeeQuote(body: Record<string, unknown> | null) {
+  const [quote, setQuote] = useState<FeeQuote | null>(null)
+  const key = body ? JSON.stringify(body) : null
+
+  useEffect(() => {
+    if (!key) { setQuote(null); return }
+    let live = true
+    const t = setTimeout(() => {
+      api.post<FeeQuote>('/api/quote', JSON.parse(key))
+        .then((q) => { if (live) setQuote(q) })
+        .catch(() => { if (live) setQuote(null) })
+    }, 400)
+    return () => { live = false; clearTimeout(t) }
+  }, [key])
+
+  return quote
+}
+
+function FeeLine({ quote, symbol }: { quote: FeeQuote | null; symbol: string }) {
+  if (!quote) return null
+  if (quote.feeMode === 'sponsored') {
+    return <div className="fee-line">Network fee: <b>free</b> — your first operation is on us.</div>
+  }
+  if (quote.fee == null) {
+    return <div className="fee-line warn">Network fee: couldn't quote right now.</div>
+  }
+  // The quote is a ceiling — max gas at max fee — while the paymaster charges
+  // the actual cost once the operation has run. "Up to" is the honest word;
+  // the real figure is reported back after signing and is usually lower.
+  return (
+    <div className="fee-line">
+      Network fee <b className="num">up to {quote.fee} {symbol}</b>
+      <span className="fee-note">charged in {symbol}, not ETH — you pay the actual cost</span>
+    </div>
+  )
+}
 
 export default function Parent({ onLogout }: { onLogout: () => void }) {
   const [st, setSt] = useState<ParentState | null>(null)
@@ -19,12 +63,16 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
 
   if (!st) return <div className="center" style={{ paddingTop: 80 }}><span className="spinner" /></div>
 
-  const run = async (key: string, fn: () => Promise<unknown>, okText: string) => {
+  const run = async (key: string, fn: () => Promise<{ feeCharged?: string | null } | unknown>, okText: string) => {
     setBusy(key)
     setNote({ kind: 'wait', text: 'Sending — a few seconds.' })
     try {
-      await fn()
-      setNote({ kind: 'ok', text: okText })
+      const res = (await fn()) as { feeCharged?: string | null } | undefined
+      const charged = res?.feeCharged
+      setNote({
+        kind: 'ok',
+        text: charged ? `${okText} Network fee: ${charged} ${st.symbol}.` : okText,
+      })
       await load()
     } catch (e) {
       setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Something went wrong.' })
@@ -85,6 +133,7 @@ function Wallet({ st, busy, run }: {
   run: (k: string, fn: () => Promise<unknown>, ok: string) => Promise<void>
 }) {
   const [amount, setAmount] = useState('')
+  const depositQuote = useFeeQuote(Number(amount) > 0 ? { action: 'deposit', amount } : null)
   const committed = st.members
     .filter((m) => !m.revoked && m.caps)
     .reduce((sum, m) => sum + Number(m.caps!.period), 0)
@@ -100,6 +149,7 @@ function Wallet({ st, busy, run }: {
         <label className="left">Add money</label>
         <input className="num" inputMode="decimal" placeholder="500" value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} />
+        <FeeLine quote={depositQuote} symbol={st.symbol} />
         <button className="primary" disabled={busy !== null || !Number(amount)}
           onClick={() => run('deposit', () => api.post('/api/deposit', { amount }),
             `Added ${amount} ${st.symbol} to the pot.`).then(() => setAmount(''))}>
@@ -119,6 +169,11 @@ function Wallet({ st, busy, run }: {
               <div className="num">{st.wallet.feeBalance}</div>
             </div>
             <p className="hint mt8">
+              Every fee you see quoted is charged in {st.symbol} from this balance. A
+              paymaster fronts the network's ETH and takes {st.symbol} back — you never
+              hold a native token.
+            </p>
+            <p className="hint">
               Everyone you invite is sponsored: they pay nothing, ever, and need no balance
               of anything to spend.
             </p>
@@ -161,6 +216,11 @@ function Family({ st, busy, run }: {
   const [inviteName, setInviteName] = useState('')
   const [inviteLink, setInviteLink] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
+  const grantQuote = useFeeQuote(
+    openFor && Number(perTx) > 0 && Number(period) > 0
+      ? { action: 'grant', memberId: openFor, perTx, period, periodLengthDays: 7 }
+      : null,
+  )
 
   const invite = async () => {
     setInviteBusy(true)
@@ -233,6 +293,7 @@ function Family({ st, busy, run }: {
               <input className="num" inputMode="decimal" value={perTx} onChange={(e) => setPerTx(e.target.value)} />
               <label>Each week, at most ({st.symbol})</label>
               <input className="num" inputMode="decimal" value={period} onChange={(e) => setPeriod(e.target.value)} />
+              <FeeLine quote={grantQuote} symbol={st.symbol} />
               <button className="primary" disabled={busy !== null}
                 onClick={() => run(`grant:${m.id}`,
                   () => api.post(`/api/members/${m.id}/grant`, { perTx, period, periodLengthDays: 7 }),

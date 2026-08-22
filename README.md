@@ -159,6 +159,16 @@ Who paid for what, decoded from the run linked above
 | **Member's payment** | Pimlico, sponsored | **nothing** |
 | Parent revokes | **ours** | 0.002011 USD₮ |
 
+The UI shows this before anything is signed. `POST /api/quote` runs WDK's own
+`quoteSendTransaction` against the **exact batch** the action would send, so
+the figure on screen is a real quote rather than a guess, and the parent's
+screen reads *"Network fee up to 0.0128 USD₮ — charged in USD₮, not ETH."*
+"Up to" is deliberate: a quote is a ceiling (max gas at max fee) while the
+paymaster charges the actual cost in `postOp`, so the real figure is lower and
+gets reported back after signing — a grant quoted at 0.012832 settled at
+0.005075. Before the first deposit the same endpoint honestly answers
+"sponsored, nothing", because there is no USD₮ to pay with yet.
+
 The bootstrap is the only subtle part: you cannot pay a USD₮ fee before holding
 USD₮. So a deposit mints slightly more than it supplies to Aave, leaves the
 remainder in the parent's account, and approves the paymaster for exactly that
