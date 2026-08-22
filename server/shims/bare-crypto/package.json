@@ -1,0 +1,5 @@
+{
+  "name": "bare-crypto",
+  "version": "1.0.0-node-shim",
+  "main": "index.js"
+}
