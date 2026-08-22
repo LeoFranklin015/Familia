@@ -122,6 +122,7 @@ crosses only the TLS tunnel to that worker and lives in memory for the session.
   that is active, unfrozen, faucet-mintable and uncapped — so the demo pot is
   EURS. The system is token-generic; on mainnet the same deployment points at
   the canonical USD₮ reserve (one config change).
+  Verify this yourself against live state: `node spikes/probe-aave-reserves.mjs`.
 - **Parent fee mode:** members are always fully sponsored. The parent is
   sponsored too because Pimlico's Sepolia USD₮ `mint` is owner-only, so a demo
   cannot acquire it programmatically to pay token-mode fees. The per-call
@@ -166,7 +167,18 @@ cloudflared tunnel --url http://localhost:8787
 ```
 
 Then open the printed URL, create a family, open your own invite, and go.
-`./scripts/e2e-demo.sh` runs the five beats headlessly (passphrase vault path).
+`./scripts/e2e-demo.sh` runs the five beats headlessly (passphrase vault path)
+— this was last verified end-to-end from a fresh `git clone` on Sepolia.
+
+Other checks worth running:
+
+```bash
+cd contracts && forge test                    # 19 tests, every named revert
+cd server && bun run test                     # passkey vault, PRF + passphrase
+node spikes/spike0-sponsored-op.mjs           # sponsored op from a fresh empty EOA
+node spikes/spike1-aave-roundtrip.mjs         # gasless Aave deposit + withdraw
+node spikes/probe-aave-reserves.mjs           # the reserve evidence quoted above
+```
 
 Contracts are already deployed (addresses above, in `.env.example`). To
 redeploy: `cd contracts && forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast`.
