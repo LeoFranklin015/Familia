@@ -50,10 +50,53 @@ export const USDT_PAYMASTER = process.env.USDT_PAYMASTER_ADDRESS || ''
 export const PAYMASTER_SERVICE_URL =
   process.env.PAYMASTER_SERVICE_URL || `http://localhost:${process.env.PORT ?? 8787}/paymaster`
 
-/** USD₮ the parent keeps outside Aave to pay their own fees with. Operations
- *  cost fractions of a cent, so this lasts the life of a demo; it exists at
- *  all because a fee in USD₮ cannot be paid out of an Aave position. */
-export const FEE_BUFFER = 5_000000n // 5 USD₮
+/**
+ * How much USD₮ the account keeps outside Aave to pay its own fees with, and
+ * how large an allowance the paymaster gets — both sized from live gas prices
+ * rather than a magic number.
+ *
+ * A real ERC-20 paymaster integration has to answer "how much of my token can
+ * this thing take?", and the honest answer depends on what gas costs right
+ * now. We price a representative operation at the current fee, convert it
+ * through the paymaster's own rate, and keep a few hundred operations of
+ * head-room. When gas gets expensive the buffer grows; when it's cheap it
+ * shrinks.
+ */
+const TYPICAL_OP_GAS = 700_000n // a batched grant/deposit, generously rounded
+const OPS_OF_HEADROOM = 250n
+const MIN_FEE_BUFFER = 1_000000n // 1 USD₮ — never approve a dust allowance
+
+/** USD₮ cost of one representative operation at current gas prices. */
+export async function feePerOperation(): Promise<bigint> {
+  if (!USDT_PAYMASTER) return 0n
+  const [fees, pm] = [await provider.getFeeData(), new ethers.Contract(USDT_PAYMASTER, [
+    'function quote(uint256) view returns (uint256)',
+  ], provider)]
+  const gasPrice = fees.maxFeePerGas ?? fees.gasPrice ?? 1_000_000_000n
+  return (await pm.quote(TYPICAL_OP_GAS * gasPrice)) as bigint
+}
+
+/** The allowance we want the paymaster to hold, at current prices. */
+export async function feeAllowanceTarget(): Promise<bigint> {
+  const perOp = await feePerOperation()
+  const target = perOp * OPS_OF_HEADROOM
+  return target > MIN_FEE_BUFFER ? target : MIN_FEE_BUFFER
+}
+
+/** If the standing allowance has been drawn down, top it back up. Returns the
+ *  calls to prepend — empty when there's nothing to do, so callers can always
+ *  splice it in. */
+export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
+  if (!USDT_PAYMASTER) return []
+  const [allowance, target, perOp] = await Promise.all([
+    assetRead.allowance(parent, USDT_PAYMASTER) as Promise<bigint>,
+    feeAllowanceTarget(),
+    feePerOperation(),
+  ])
+  // Re-approve once it's down to a handful of operations' worth.
+  if (allowance >= perOp * 20n) return []
+  return [{ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, target]) }]
+}
 
 /**
  * How much test USD₮ to pull the one time the faucet lets us.
@@ -132,25 +175,37 @@ export type Tx = { to: string; value: bigint; data: string }
 /** Mint test USD₮ from the Aave faucet, approve the savings position, and
  *  deposit — one batched, sponsored UserOperation, from an account that starts
  *  with nothing at all (not even gas). */
-export function buildDepositBatch(
-  parent: string,
-  amount: bigint,
-  opts: { mint?: bigint; approvePaymaster?: bigint } = {},
-): Tx[] {
+/**
+ * The parent's very first operation, run during onboarding.
+ *
+ * This is the only place the faucet is touched. It enforces one mint per
+ * address per day regardless of size, so we take a generous amount here and
+ * fund every later deposit from the balance we already hold — otherwise the
+ * second deposit of the day fails with "Mint timelock exceeded".
+ *
+ * It also sets the paymaster's allowance, which is what lets the account pay
+ * its own fees in USD₮ from this point on.
+ */
+export async function buildOnboardingBatch(parent: string): Promise<Tx[]> {
   const txs: Tx[] = []
-  if (opts.mint && opts.mint > 0n) {
-    txs.push({ to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, opts.mint]) })
+  const held = (await assetRead.balanceOf(parent)) as bigint
+  if (held < MINT_CHUNK && (await faucetWouldMint(parent, MINT_CHUNK))) {
+    txs.push({ to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, MINT_CHUNK]) })
   }
-  txs.push(
-    { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
-    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
-  )
-  if (opts.approvePaymaster && opts.approvePaymaster > 0n && USDT_PAYMASTER) {
-    // Approving the paymaster is what authorises it to charge this account —
-    // there is no signed voucher. Bounded, never unlimited.
-    txs.push({ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, opts.approvePaymaster]) })
+  if (USDT_PAYMASTER) {
+    txs.push({
+      to: AAVE.ASSET, value: 0n,
+      data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, await feeAllowanceTarget()]),
+    })
   }
   return txs
+}
+
+export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
+  return [
+    { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
+    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
+  ]
 }
 
 /** Would the faucet let this account mint right now? It refuses with
@@ -169,51 +224,47 @@ export async function faucetWouldMint(parent: string, amount: bigint): Promise<b
   }
 }
 
-/** Plan a deposit against what the account already holds, minting only when
- *  it must and only when the faucet allows. */
+/**
+ * Plan a deposit purely out of what the account already holds — no faucet.
+ *
+ * Funding happens once, during onboarding. Keeping the faucet out of the
+ * deposit path is what makes a second deposit possible at all, and it means
+ * "add to the pot" only ever moves money the household already has.
+ */
 export async function planDeposit(parent: string, amount: bigint): Promise<
-  | { ok: true; txs: Tx[]; minted: bigint }
+  | { ok: true; txs: Tx[] }
   | { ok: false; reason: string }
 > {
   const held = (await assetRead.balanceOf(parent)) as bigint
-  const allowance = USDT_PAYMASTER
-    ? ((await assetRead.allowance(parent, USDT_PAYMASTER)) as bigint)
-    : 0n
+  const perOp = await feePerOperation()
+  // Leave enough behind to keep paying fees with.
+  const reserve = perOp * 20n
+  const available = held > reserve ? held - reserve : 0n
 
-  // Keep a fee buffer topped up alongside the deposit.
-  const wantBuffer = USDT_PAYMASTER && allowance < FEE_BUFFER ? FEE_BUFFER : 0n
-  const needed = amount + wantBuffer
-
-  let mint = 0n
-  if (held < needed) {
-    mint = MINT_CHUNK > needed - held ? MINT_CHUNK : needed - held
-    if (!(await faucetWouldMint(parent, mint))) {
-      const spendable = held > wantBuffer ? held - wantBuffer : 0n
-      return {
-        ok: false,
-        reason: spendable > 0n
-          ? `The test faucet allows one top-up per day per account and this one has used it. You can still add up to ${formatUnits(spendable)} ${AAVE.SYMBOL} from what this account already holds.`
-          : 'The test faucet allows one top-up per day per account and this one has used it. Try again tomorrow, or start a family on a fresh account.',
-      }
+  if (amount > available) {
+    return {
+      ok: false,
+      reason: available > 0n
+        ? `This account holds ${formatUnits(held)} ${AAVE.SYMBOL}. You can add up to ${formatUnits(available)}, keeping a little back for network fees.`
+        : `This account has no ${AAVE.SYMBOL} left to add. Its faucet top-up is once per day.`,
     }
   }
 
-  return {
-    ok: true,
-    minted: mint,
-    txs: buildDepositBatch(parent, amount, { mint, approvePaymaster: wantBuffer }),
-  }
+  const topUp = await maybeTopUpFeeAllowance(parent)
+  return { ok: true, txs: [...topUp, ...buildDepositBatch(parent, amount)] }
 }
 
 /** Whether this account can currently pay its own fees in USD₮: it needs a
  *  USD₮ balance and a standing approval to the paymaster. */
 export async function canPayFeesInUsdt(address: string): Promise<boolean> {
   if (!USDT_PAYMASTER) return false
-  const [balance, allowance] = await Promise.all([
+  const [balance, allowance, perOp] = await Promise.all([
     assetRead.balanceOf(address) as Promise<bigint>,
     assetRead.allowance(address, USDT_PAYMASTER) as Promise<bigint>,
+    feePerOperation(),
   ])
-  const floor = 100_000n // 0.10 USD₮ — many operations' worth
+  // Enough for at least one operation at today's prices, with margin.
+  const floor = perOp * 2n
   return balance >= floor && allowance >= floor
 }
 

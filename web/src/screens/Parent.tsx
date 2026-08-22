@@ -158,11 +158,25 @@ function Wallet({ st, busy, run }: {
 
   return (
     <>
+      {st.wallet.setup.status === 'running' && (
+        <div className="note wait">
+          <span className="spinner" />Getting your account ready — this happens once.
+        </div>
+      )}
+      {st.wallet.setup.status === 'failed' && (
+        <div className="note err">Setup didn't finish: {st.wallet.setup.reason} Reload to retry.</div>
+      )}
+
       <div className="card center">
         <h2>The pot</h2>
         <div className="big-number num">{st.wallet.pot}<span className="cur">{st.symbol}</span></div>
         <div className="hint">
           Held in your own account, not ours. Only you can see this.
+        </div>
+        <div className="hint">
+          {Number(st.wallet.feeBalance) > 0
+            ? `${st.wallet.feeBalance} ${st.symbol} available to add`
+            : 'Nothing left to add — the test faucet tops up once a day.'}
         </div>
         <label className="left">Add money</label>
         <input className="num" inputMode="decimal" placeholder="500" value={amount}

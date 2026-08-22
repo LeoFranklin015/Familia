@@ -9,6 +9,7 @@ import {
   managerRead, MANAGER, parseUnits, planDeposit, USDT_PAYMASTER,
 } from '../chain.js'
 import { mustFamily, record, save } from '../store.js'
+import { bootstrapParent, bootstrapStatus } from '../bootstrap.js'
 import { waitForUserOp } from '../wdk.js'
 import { currentSession } from './join.js'
 
@@ -95,15 +96,16 @@ parentRoutes.post('/api/quote', async (c) => {
 /** Plain-language description of a batch, by target and selector, so the UI can
  *  show every call the single operation makes — including a faucet mint. */
 function describe(txs: Array<{ to: string; data: string }>): string[] {
-  return txs.map((tx) => {
+  const approve = erc20.getFunction('approve')!.selector
+  return txs.flatMap((tx) => {
     const to = tx.to.toLowerCase()
-    const sel = tx.data.slice(0, 10)
-    if (to === AAVE.FAUCET.toLowerCase()) return `Get test ${AAVE.SYMBOL} from the Aave faucet`
-    if (to === AAVE.POOL.toLowerCase()) return `Supply it to Aave`
-    if (to === AAVE.ASSET.toLowerCase() && sel === erc20.getFunction('approve')!.selector) return `Approve ${AAVE.SYMBOL}`
-    if (to === AAVE.A_ASSET.toLowerCase()) return `Approve the spend manager for aUSD₮`
-    if (to === MANAGER.toLowerCase()) return `Update the on-chain permission`
-    return `Call ${tx.to.slice(0, 10)}…`
+    // Approvals are plumbing. Batching is precisely what lets them be
+    // invisible, so they aren't listed as things the person is deciding.
+    if (tx.data.slice(0, 10) === approve) return []
+    if (to === AAVE.FAUCET.toLowerCase()) return [`Get test ${AAVE.SYMBOL}`]
+    if (to === AAVE.POOL.toLowerCase()) return [`Move it into Aave`]
+    if (to === MANAGER.toLowerCase()) return [`Set the limits on-chain`]
+    return [`Call ${tx.to.slice(0, 10)}…`]
   })
 }
 
@@ -264,6 +266,13 @@ parentRoutes.get('/api/state', async (c) => {
   if (s?.role !== 'parent') return c.json({ error: 'parent only' }, 403)
   const f = mustFamily()
 
+  // If funding never landed (a refresh mid-onboarding, a restarted server),
+  // pick it up again rather than leaving the account stranded.
+  const boot = bootstrapStatus(s.address)
+  if (boot.status === 'idle' || boot.status === 'failed') {
+    if (!(await canPayFeesInUsdt(s.address))) bootstrapParent(s)
+  }
+
   const [pool, feeBalance, paysInUsdt] = await Promise.all([
     aAssetRead.balanceOf(s.address) as Promise<bigint>,
     assetRead.balanceOf(s.address) as Promise<bigint>,
@@ -304,6 +313,7 @@ parentRoutes.get('/api/state', async (c) => {
       feeBalance: formatUnits(feeBalance),
       feeMode: paysInUsdt ? 'usdt' : 'sponsored',
       paymaster: USDT_PAYMASTER || null,
+      setup: bootstrapStatus(s.address),
     },
     pool: formatUnits(pool),
     deposits: f.deposits,

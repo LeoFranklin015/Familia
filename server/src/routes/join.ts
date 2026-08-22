@@ -5,6 +5,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { createFamily, findByCredentialId, findInvite, getFamily, mustFamily, newInvite, save } from '../store.js'
 import { createVaultEntry, openVaultEntry, type KeySource } from '../vault.js'
 import { addressForMnemonic, createSession, destroySession, getSession } from '../wdk.js'
+import { bootstrapParent } from '../bootstrap.js'
 import { randomUUID } from 'node:crypto'
 
 export const joinRoutes = new Hono()
@@ -67,6 +68,12 @@ joinRoutes.post('/api/join/:token', async (c) => {
 
   const session = await createSession(isParent ? 'parent' : 'member', memberId, mnemonic)
   setCookie(c, COOKIE, session.id, { httpOnly: true, sameSite: 'Lax', path: '/' })
+
+  // Fund the parent's account and set the paymaster's allowance as part of
+  // signing up — not as a surprise inside their first deposit. Runs in the
+  // background so onboarding stays a two-tap flow; the Pot tab reports it.
+  if (isParent) bootstrapParent(session)
+
   return c.json({ role: session.role, address, credentialId })
 })
 

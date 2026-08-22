@@ -170,11 +170,32 @@ gets reported back after signing — a grant quoted at 0.012832 settled at
 "sponsored, nothing", because there is no USD₮ to pay with yet.
 
 The bootstrap is the only subtle part: you cannot pay a USD₮ fee before holding
-USD₮. So a deposit mints slightly more than it supplies to Aave, leaves the
-remainder in the parent's account, and approves the paymaster for exactly that
-buffer. Which account signs is then decided from on-chain state on every
-operation, so the first one is sponsored, every later one is self-paid, and a
-drained buffer degrades to sponsorship instead of failing.
+USD₮. So funding happens **once, during onboarding** — the parent's sign-up
+fires one sponsored operation that draws test USD₮ from the faucet and sets the
+paymaster's allowance. It runs in the background, so signing up is still two
+taps, and the Pot tab reports it. Everything after that is self-paid, and the
+choice is re-derived from on-chain state each time, so a drained buffer
+degrades to sponsorship rather than failing.
+
+Keeping the faucet out of the deposit path is not incidental: it enforces a
+per-address mint timelock, so minting per deposit works exactly once and then
+fails for the rest of the day (field note 5).
+
+**The allowance is priced, not guessed.** A real ERC-20 paymaster integration
+has to answer "how much of my token may this contract take?", and the honest
+answer moves with gas. We price a representative operation at the current fee,
+convert it through the paymaster's own rate, and keep 250 operations of
+head-room — topping it back up automatically once it's down to twenty. At the
+time of writing that reads:
+
+```
+live maxFeePerGas :  11000000 wei
+fee per operation :  0.01925 USD₮      ← derived from that gas price
+allowance target  :  4.8125  USD₮      ← 250 operations of head-room
+```
+
+If gas gets ten times more expensive both numbers scale with it. Nothing in
+that path is a constant.
 
 Two things stated plainly rather than left to be discovered. The rate is a
 fixed `1 native = 2500 USD₮` set at deploy, not an oracle — on a testnet an
@@ -263,7 +284,13 @@ Four things that cost real time, recorded because they aren't in any doc.
    (`server/shims/bare-crypto`, wired by `scripts/install-shims.mjs`). Also:
    `generateAndEncrypt` is `async` in the implementation despite a synchronous
    signature in the shipped `.d.ts`. Await it.
-4. **A self-hosted paymaster needs two things nobody mentions.** It must be
+4. **The Aave testnet faucet has a per-address mint timelock.** One mint per
+   day regardless of size, and it will happily mint a very large amount. Minting
+   inside the deposit flow therefore worked exactly once: the second deposit of
+   the day reverted with `Mint timelock exceeded`, and because a fee quote
+   simulates the real batch, the quote failed with it. Funding now happens once
+   at onboarding and deposits move only money already held.
+5. **A self-hosted paymaster needs two things nobody mentions.** It must be
    *staked* with the EntryPoint, because reading the sender's token balance and
    allowance is external-storage access that ERC-7562 only permits from a staked
    paymaster. And its ERC-7677 stub response must **not** set `isFinal: true`:

@@ -48,6 +48,8 @@ export type ParentState = {
     feeBalance: string
     feeMode: 'usdt' | 'sponsored'
     paymaster: string | null
+    /** Onboarding funding: happens once, in the background, at sign-up. */
+    setup: { status: 'idle' | 'running' | 'done' | 'failed'; txHash?: string; reason?: string }
   }
   activity: Activity[]
   members: Array<{
