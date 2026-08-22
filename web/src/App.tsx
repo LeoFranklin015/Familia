@@ -10,7 +10,7 @@ export default function App() {
   const joinToken = location.pathname.startsWith('/join/') ? location.pathname.split('/')[2] : null
 
   useEffect(() => {
-    api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null }))
+    api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null, family: { exists: false } }))
   }, [])
 
   const refresh = () => api.get<Whoami>('/api/whoami').then(setWho)
@@ -27,7 +27,7 @@ export default function App() {
   }
   if (who.role === 'parent') return <Parent onLogout={refresh} />
   if (who.role === 'member') return <Member onLogout={refresh} />
-  return <Onboarding onReady={refresh} />
+  return <Onboarding onReady={refresh} family={who.family} />
 }
 
 export function TopBar({ who, onLogout }: { who: string; onLogout: () => void }) {

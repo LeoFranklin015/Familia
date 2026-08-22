@@ -23,7 +23,13 @@ export const api = {
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 }
 
-export type Whoami = { role: 'parent' | 'member' | null; address?: string }
+export type Whoami = {
+  role: 'parent' | 'member' | null
+  address?: string
+  /** Present for signed-out visitors too: whether this server already has a
+   *  family, which decides whether they can start one or should sign in. */
+  family: { exists: boolean; name?: string; claimed?: boolean }
+}
 
 export type Merchant = { name: string; address: string }
 

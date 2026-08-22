@@ -101,6 +101,11 @@ joinRoutes.post('/api/logout', (c) => {
 
 joinRoutes.get('/api/whoami', (c) => {
   const s = currentSession(c)
-  if (!s) return c.json({ role: null })
-  return c.json({ role: s.role, address: s.address, memberId: s.memberId ?? null })
+  // Whether a family exists is part of "who am I" for a signed-out visitor:
+  // it decides whether they can start one or should be signing in. Without it
+  // the app offers an action that cannot succeed.
+  const f = getFamily()
+  const family = f ? { exists: true, name: f.name, claimed: Boolean(f.parent) } : { exists: false }
+  if (!s) return c.json({ role: null, family })
+  return c.json({ role: s.role, address: s.address, memberId: s.memberId ?? null, family })
 })

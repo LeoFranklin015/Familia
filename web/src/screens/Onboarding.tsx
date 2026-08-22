@@ -13,8 +13,17 @@ type Step = 'welcome' | 'names' | 'secure' | 'signin'
  * The invite link is how *other people* join; the person starting the family
  * never has to touch one.
  */
-export default function Onboarding({ onReady }: { onReady: () => void }) {
-  const [step, setStep] = useState<Step>('welcome')
+export default function Onboarding({
+  onReady, family,
+}: {
+  onReady: () => void
+  family: { exists: boolean; name?: string; claimed?: boolean }
+}) {
+  // A server holds one family. If it already has one, starting another cannot
+  // succeed — so don't offer it, and open on signing in instead of failing
+  // two screens later.
+  const taken = family.exists && Boolean(family.claimed)
+  const [step, setStep] = useState<Step>(taken ? 'signin' : 'welcome')
   const [famName, setFamName] = useState('')
   const [parentName, setParentName] = useState('')
   const [token, setToken] = useState('')
@@ -33,7 +42,10 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       setToken(r.joinPath.split('/').pop()!)
       setStep('secure')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not start the family.')
+      const msg = e instanceof Error ? e.message : 'Could not start the family.'
+      setErr(msg.includes('already exists')
+        ? 'This server already runs a family — sign in instead.'
+        : msg)
     } finally { setBusy(false) }
   }
 
@@ -101,11 +113,24 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
             <li><b>Send a link.</b> One tap and they're ready.</li>
             <li><b>They just pay.</b> Within your limits it goes straight through.</li>
           </ol>
-          <button className="btn btn--primary btn--block" onClick={() => go('names')}>Start a family</button>
-          <p className="center-row">
-            Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
-          </p>
-          <p className="center-row center-row--dim">Been sent an invite? Just open that link.</p>
+          {taken ? (
+            <>
+              <button className="btn btn--primary btn--block" onClick={() => go('signin')}>
+                Sign in to {family.name}
+              </button>
+              <p className="center-row center-row--dim">
+                This server already runs {family.name}. Been sent an invite? Just open that link.
+              </p>
+            </>
+          ) : (
+            <>
+              <button className="btn btn--primary btn--block" onClick={() => go('names')}>Start a family</button>
+              <p className="center-row">
+                Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
+              </p>
+              <p className="center-row center-row--dim">Been sent an invite? Just open that link.</p>
+            </>
+          )}
         </>
       )}
 
@@ -168,7 +193,9 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       {step === 'signin' && (
         <>
           <h1>Welcome back.</h1>
-          <p className="lede">Same face, same account.</p>
+          <p className="lede">
+            {family.name ? <>Sign in to {family.name}. Same face, same account.</> : 'Same face, same account.'}
+          </p>
           {!usePassphrase ? (
             <>
               <button className="btn btn--primary btn--block" onClick={signInFaceId} disabled={busy}>
@@ -191,7 +218,9 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               </p>
             </>
           )}
-          <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
+          {!taken && (
+            <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
+          )}
         </>
       )}
 
