@@ -1,8 +1,13 @@
-// Addresses, interfaces and calldata builders. Aave addresses come from the
-// canonical address book — never pasted hex. The pool asset is EURS: Aave
-// Sepolia's USDT/USDC/DAI reserves are >2x over their supply caps (supply
-// reverts with Aave error 51), EURS is the only mintable, uncapped stable
-// reserve. On mainnet this is the canonical USD₮ reserve — one env change.
+// Addresses, interfaces and calldata builders. Token addresses come from the
+// canonical Aave address book — never pasted hex.
+//
+// The family money is USD₮ (Aave's Sepolia testnet USDT), which the Aave
+// faucet mints freely. The savings leg is our own SavingsVault rather than
+// Aave itself: Aave Sepolia's USDT reserve sits ~2x over its supply cap, so
+// supply() reverts for any amount (verify with spikes/probe-aave-reserves.mjs).
+// The vault implements Aave's exact pool interface, so pointing SAVINGS_POOL
+// at Aave's POOL with aUSDT as the source token is a config change, not a
+// code change — which is what happens on mainnet.
 import { ethers } from 'ethers'
 import { AaveV3Sepolia } from '@bgd-labs/aave-address-book'
 
@@ -14,13 +19,18 @@ try {
 
 export const CHAIN_ID = 11155111
 
+export const SAVINGS_VAULT = requireEnv('SAVINGS_VAULT')
+
 export const AAVE = {
-  POOL: AaveV3Sepolia.POOL as string,
   FAUCET: AaveV3Sepolia.FAUCET as string,
-  ASSET: AaveV3Sepolia.ASSETS.EURS.UNDERLYING as string,
-  A_ASSET: AaveV3Sepolia.ASSETS.EURS.A_TOKEN as string,
-  DECIMALS: 2,
-  SYMBOL: 'EURS',
+  ASSET: AaveV3Sepolia.ASSETS.USDT.UNDERLYING as string,
+  // The receipt token held by the funder. Here the vault is its own receipt
+  // token; against Aave this would be aUSDT.
+  A_ASSET: SAVINGS_VAULT,
+  // Where a deposit goes and where a spend redeems from.
+  POOL: SAVINGS_VAULT,
+  DECIMALS: 6,
+  SYMBOL: 'USD₮',
 }
 
 export const MANAGER = requireEnv('SCOPED_SPEND_MANAGER_ADDRESS')
@@ -47,7 +57,9 @@ export const faucetIface = new ethers.Interface([
   'function mint(address token, address to, uint256 amount) returns (uint256)',
 ])
 export const poolIface = new ethers.Interface([
-  'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
+  'function deposit(uint256 amount)',
+  // Aave's own signature; the vault matches it so the manager is agnostic.
+  'function withdraw(address asset, uint256 amount, address to) returns (uint256)',
 ])
 export const managerIface = new ethers.Interface([
   'function grant(address spender, address asset, address source, uint256 perTxCap, uint256 periodCap, uint256 periodLength, uint256 expiry) returns (bytes32)',
@@ -72,11 +84,14 @@ export const aAssetRead = new ethers.Contract(AAVE.A_ASSET, erc20, provider)
 
 export type Tx = { to: string; value: bigint; data: string }
 
+/** Mint test USD₮ from the Aave faucet, approve the savings position, and
+ *  deposit — one batched, sponsored UserOperation, from an account that starts
+ *  with nothing at all (not even gas). */
 export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
   return [
     { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) },
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
-    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
+    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('deposit', [amount]) },
   ]
 }
 

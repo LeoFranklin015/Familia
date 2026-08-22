@@ -15,7 +15,7 @@ TOKEN=$(post "$PJ" /api/family '{"name":"The Demo Family","parentName":"Alex"}' 
 PARENT=$(post "$PJ" "/api/join/$TOKEN" '{"passphrase":"parent-passphrase-demo"}')
 echo "parent: $PARENT"
 
-step "1. parent deposits 500 EURS into Aave (mint+approve+supply, one sponsored UserOp)"
+step "1. parent deposits 500 USD₮ into the savings position (faucet mint + approve + deposit, one sponsored UserOp)"
 post "$PJ" /api/deposit '{"amount":"500"}' | jqr "['txHash']"
 
 step "2. member joins by link — no funding, no seed phrase shown"
@@ -28,7 +28,7 @@ MID=$(get "$PJ" /api/state | jqr "['members'][0]['id']")
 post "$PJ" "/api/members/$MID/grant" '{"perTx":"50","period":"120","periodLengthDays":7}' | jqr "['scopeId']"
 get "$MJ" /api/me | jqr "['spendable']"
 
-step "3. member spends 8 EURS at Corner Store — out of Aave, straight to merchant, zero gas"
+step "3. member spends 8 USD₮ at Corner Store — redeemed from savings, straight to merchant, zero gas"
 post "$MJ" /api/spend '{"to":"0x1111000000000000000000000000000000001111","amount":"8"}'
 
 step "4. member tries 200 — over cap: becomes an ask, parent approves, it clears"
