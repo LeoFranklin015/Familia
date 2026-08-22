@@ -340,35 +340,40 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 /* ==========================================================================
    Desktop: put the app in a handset.
 
-   Below the breakpoint the frame is inert and the app owns the viewport — a
-   phone should never render a picture of a phone. Above it, the app is a
-   390x844 device on a stage, because a thumb-first layout stretched across a
-   monitor reads as a broken website rather than a considered app.
+   Below the breakpoint the frame does not exist and the app owns the viewport
+   — a phone should never render a picture of a phone. Above it, the app is a
+   handset on a stage, because a thumb-first layout stretched across a monitor
+   reads as a broken website rather than a considered app.
+
+   The frame is sized from the viewport, not fixed: it takes the smaller of a
+   real handset's height and what the window can show, and derives its width
+   from the aspect ratio. So it fits a 13" laptop and a tall monitor without a
+   scrollbar or a cropped device.
    ========================================================================== */
 
 .stage { display: contents; }
 
-@media (min-width: 60rem) {
+@media (min-width: 48rem) {
   body { background: var(--surface-sunk); }
 
   .stage {
     display: grid;
-    grid-template-columns: auto minmax(0, 20rem);
-    gap: var(--s10);
-    align-items: center;
-    justify-content: center;
+    place-items: center;
     min-height: 100dvh;
-    padding: var(--s8);
+    padding: var(--s6);
   }
 
   .device {
-    /* The transform is load-bearing: it makes this element the containing
-       block for the app's fixed action bar, tab bar and sheets, so they pin
-       to the device instead of the browser window. */
+    /* Load-bearing, not cosmetic: a transformed ancestor becomes the
+       containing block for fixed-position descendants, which is what keeps the
+       app's action bar, tab bar and bottom sheets pinned inside the device
+       instead of escaping to the browser viewport. */
     transform: translateZ(0);
     position: relative;
-    width: 390px;
-    height: 844px;
+    /* 390x844 at most, shrinking with the window. */
+    height: min(844px, 92dvh);
+    aspect-ratio: 390 / 844;
+    width: auto;
     padding: 10px;
     border-radius: 54px;
     background: linear-gradient(168deg, #3d3a37, #191817 42%, #2e2b28);
@@ -384,15 +389,17 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
     height: 100%;
     border-radius: 44px;
     overflow: hidden;
-    background: var(--paper);
-    /* The app scrolls inside the device, not the page. */
     overflow-y: auto;
+    background: var(--paper);
     -webkit-overflow-scrolling: touch;
-    /* The frame supplies what a real handset's insets would. */
+    /* The frame supplies what a handset's insets would, so one set of layout
+       rules serves both. */
     --safe-top: 34px;
     --safe-bottom: 20px;
   }
-  .device__screen .app { min-height: 844px; }
+  /* Fill the screen, scroll past it — never a fixed pixel height, or the app
+     would be cut off in a shorter frame. */
+  .device__screen .app { min-height: 100%; }
 
   .device__island {
     position: absolute;
@@ -404,13 +411,24 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
     pointer-events: none;
   }
 
-  /* Fixed children resolve against the device, but they still need to respect
-     its rounded screen. */
+  /* Fixed children resolve against the device now, but they still have to
+     respect its rounded screen. */
   .device__screen .tabbar,
   .device__screen .actionbar { max-width: none; }
   .device__screen .sheet { border-radius: var(--r-sheet) var(--r-sheet) 44px 44px; }
 
-  .stage__aside { color: var(--ink-2); }
+  .stage__aside { display: none; }
+}
+
+/* Room for the aside only once the window is genuinely wide. */
+@media (min-width: 62rem) {
+  .stage {
+    grid-template-columns: auto minmax(0, 19rem);
+    gap: var(--s10);
+    place-items: center;
+    justify-content: center;
+  }
+  .stage__aside { display: block; color: var(--ink-2); }
   .stage__brand { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
   .stage__brand i { color: var(--accent); font-style: normal; }
   .stage__line { margin-top: var(--s2); font-size: 1.05rem; line-height: 1.45; color: var(--ink); }
@@ -423,33 +441,13 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
   }
 }
 
-/* Narrow desktop / large tablet: frame it, drop the aside. */
-@media (min-width: 48rem) and (max-width: 59.99rem) {
-  body { background: var(--surface-sunk); }
-  .stage {
-    display: grid; place-items: center; min-height: 100dvh; padding: var(--s6);
-  }
-  .stage__aside { display: none; }
-  .device {
-    transform: translateZ(0);
-    position: relative; width: 390px; height: 800px; padding: 10px;
-    border-radius: 54px;
-    background: linear-gradient(168deg, #3d3a37, #191817 42%, #2e2b28);
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 30px 60px -20px rgb(15 20 17 / 0.4);
-  }
-  .device__screen {
-    position: relative; width: 100%; height: 100%;
-    border-radius: 44px; overflow: hidden; overflow-y: auto;
-    background: var(--paper);
-    --safe-top: 34px; --safe-bottom: 20px;
-  }
-  .device__screen .app { min-height: 800px; }
-  .device__island {
-    position: absolute; top: 21px; left: 50%; transform: translateX(-50%);
-    width: 106px; height: 30px; border-radius: var(--r-pill);
-    background: #0b0a09; z-index: 50; pointer-events: none;
-  }
-  .device__screen .tabbar, .device__screen .actionbar { max-width: none; }
+/* A short, wide window (a laptop in landscape) — give the device the height
+   back by dropping the stage padding rather than cropping it. */
+@media (min-width: 48rem) and (max-height: 46rem) {
+  .stage { padding: var(--s3); }
+  .device { height: min(844px, 96dvh); border-radius: 44px; }
+  .device__screen { border-radius: 36px; }
+  .device__island { top: 16px; height: 26px; width: 92px; }
 }
 
 /* On an actual phone the frame must not exist. The device styles live only
