@@ -45,13 +45,15 @@ export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}
           reason: 'Member accounts may only call the ScopedSpendManager.',
           operation: ['sendTransaction', 'signTransaction', 'transfer', 'approve'],
           action: 'DENY',
-          conditions: [
-            (ctx: { args: readonly unknown[] }) => {
-              const first = ctx.args[0] as { to?: string } | Array<{ to?: string }> | undefined
-              const txs = Array.isArray(first) ? first : [first]
-              return txs.some((t) => (t?.to ?? '').toLowerCase() !== MANAGER.toLowerCase())
-            },
-          ],
+          conditions: [(ctx: { args: readonly unknown[] }) => !targetsManagerOnly(ctx.args[0])],
+        },
+        {
+          // A governed account with no matching rule is denied by default, so
+          // the permitted path needs to be stated explicitly.
+          name: 'allow-manager-targets',
+          operation: ['sendTransaction', 'signTransaction', 'transfer', 'approve'],
+          action: 'ALLOW',
+          conditions: [(ctx: { args: readonly unknown[] }) => targetsManagerOnly(ctx.args[0])],
         },
       ],
     } as Parameters<WDK['registerPolicy']>[0])
@@ -94,6 +96,14 @@ export async function waitForUserOp(
     await new Promise((r) => setTimeout(r, interval))
   }
   throw new Error(`userOp ${hash} not included within ${timeout / 1000}s`)
+}
+
+function targetsManagerOnly(arg: unknown): boolean {
+  const txs = Array.isArray(arg) ? arg : [arg]
+  return txs.length > 0 && txs.every(
+    (t) => typeof (t as { to?: string })?.to === 'string' &&
+      (t as { to: string }).to.toLowerCase() === MANAGER.toLowerCase(),
+  )
 }
 
 type Log = { address: string; topics: string[]; data: string }

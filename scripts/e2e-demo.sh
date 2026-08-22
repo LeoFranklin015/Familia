@@ -40,6 +40,9 @@ step "5. parent revokes — next attempt is refused"
 post "$PJ" "/api/members/$MID/revoke" '{}' | jqr "['txHash']"
 echo "member tries to spend 5 after revoke:"
 curl -s -b "$MJ" -H 'content-type: application/json' -d '{"to":"0x1111000000000000000000000000000000001111","amount":"5"}' "$BASE/api/spend"
+echo
+echo "and again with force=true, skipping every local check so the CONTRACT is what refuses:"
+curl -s -b "$MJ" -H 'content-type: application/json' -d '{"to":"0x1111000000000000000000000000000000001111","amount":"5","force":true}' "$BASE/api/spend"
 
 step "final state"
 get "$PJ" /api/state | python3 -m json.tool | head -30
