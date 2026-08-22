@@ -97,6 +97,19 @@ every named revert (`NotSpender`, `Revoked`, `Expired`, `OverPerTxCap`,
 `OverPeriodCap`, `RecipientNotAllowed`, …), both settlement paths, and the
 vault's equivalence to an Aave pool: `cd contracts && forge test`.
 
+### Who sees what
+
+The two surfaces are deliberately asymmetric, and that asymmetry is enforced
+server-side, not by hiding UI:
+
+- **The parent** sees the pot, what's committed to each person in weekly
+  limits, the on-chain permission id behind every allowance, and the full
+  household history.
+- **A member** is never told the size of the pot or anything about anyone else.
+  `GET /api/me` returns only their own per-purchase limit, whether this payment
+  clears, and their own payments — and `/api/state` refuses them outright.
+  A kid's app is one question: who are you paying, and how much.
+
 ### The passkey layer — "passkey-gated", not passkey-native
 
 ```

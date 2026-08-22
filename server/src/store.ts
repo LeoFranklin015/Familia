@@ -28,6 +28,19 @@ export type SpendRequest = {
   txHash?: string
 }
 
+/** One line of history. `memberId` is set when a member caused it, which is
+ *  also how a member's own feed is filtered — a member is never shown the
+ *  household's activity, only their own payments. */
+export type Activity = {
+  id: string
+  kind: 'deposit' | 'allowance' | 'revoke' | 'payment' | 'ask' | 'approved' | 'denied'
+  text: string
+  amount?: string
+  memberId?: string
+  txHash?: string
+  at: number
+}
+
 export type Family = {
   name: string
   parent?: { name: string; address: string; vault: VaultBlob }
@@ -36,6 +49,14 @@ export type Family = {
   members: Member[]
   requests: SpendRequest[]
   deposits: Array<{ amount: string; txHash: string; at: number }>
+  activity: Activity[]
+}
+
+export function record(entry: Omit<Activity, 'id' | 'at'>) {
+  const f = mustFamily()
+  f.activity.unshift({ ...entry, id: randomBytes(8).toString('hex'), at: Date.now() })
+  f.activity = f.activity.slice(0, 100)
+  save()
 }
 
 const PATH = new URL('../data/family.json', import.meta.url).pathname
@@ -62,6 +83,7 @@ export function createFamily(name: string, parentName: string): { family: Family
     members: [],
     requests: [],
     deposits: [],
+    activity: [],
   }
   save()
   return { family, parentJoinToken: token }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type Whoami } from './api'
 import Join from './screens/Join'
-import Landing from './screens/Landing'
+import Onboarding from './screens/Onboarding'
 import Member from './screens/Member'
 import Parent from './screens/Parent'
 
@@ -19,7 +19,7 @@ export default function App() {
   if (!who) return <div className="center" style={{ paddingTop: 80 }}><span className="spinner" /></div>
   if (who.role === 'parent') return <Parent onLogout={refresh} />
   if (who.role === 'member') return <Member onLogout={refresh} />
-  return <Landing onUnlocked={refresh} />
+  return <Onboarding onReady={refresh} />
 }
 
 export function TopBar({ who, onLogout }: { who: string; onLogout: () => void }) {

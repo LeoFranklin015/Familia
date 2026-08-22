@@ -5,7 +5,7 @@ import { ethers } from 'ethers'
 import {
   AAVE, MERCHANTS, eventArgFromLogs, formatUnits, humanizeManagerRevert, managerIface, managerRead, MANAGER, parseUnits,
 } from '../chain.js'
-import { mustFamily, save } from '../store.js'
+import { mustFamily, record, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { currentSession } from './join.js'
 
@@ -38,18 +38,21 @@ memberRoutes.get('/api/me', async (c) => {
     resetsAt = Number(resets)
   }
 
+  // Deliberately narrow: a member is never told the size of the family pot,
+  // nor anything about other members. `limit` is their own per-purchase
+  // ceiling — what the Send/Ask affordance is built from — not a balance.
   return c.json({
     name: member.name,
-    address: member.address,
     familyName: f.name,
     symbol: AAVE.SYMBOL,
     hasAllowance: Boolean(member.scopeId && !member.revoked),
-    caps: member.caps ?? null,
-    spendable,
+    limit: member.caps?.perTx ?? null,
+    headroom: spendable,
     spentThisPeriod: spent,
     resetsAt,
     merchants: MERCHANTS,
     myRequests: f.requests.filter((r) => r.memberId === member.id),
+    activity: f.activity.filter((a) => a.memberId === member.id && (a.kind === 'payment' || a.kind === 'ask' || a.kind === 'approved' || a.kind === 'denied')),
   })
 })
 
@@ -82,6 +85,11 @@ memberRoutes.post('/api/spend', async (c) => {
       })
       const result = await waitForUserOp(s.account, hash)
       if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
+      record({
+        kind: 'payment',
+        text: `${member.name} paid ${amount} to ${merchantName(to)}`,
+        amount: String(amount), memberId: member.id, txHash: result.txHash,
+      })
       return c.json({ kind: 'spent', txHash: result.txHash, userOpHash: hash })
     } catch (err) {
       const human = humanizeManagerRevert(err)
@@ -105,12 +113,22 @@ memberRoutes.post('/api/spend', async (c) => {
     requestId,
     memberId: member.id,
     to,
-    toName: MERCHANTS.find((m) => m.address.toLowerCase() === String(to).toLowerCase())?.name ?? to,
+    toName: merchantName(to),
     amount: String(amount),
     status: 'pending',
     createdAt: Date.now(),
     txHash: result.txHash,
   })
   save()
+  record({
+    kind: 'ask',
+    text: `${member.name} asked to pay ${amount} to ${merchantName(to)}`,
+    amount: String(amount), memberId: member.id, txHash: result.txHash,
+  })
   return c.json({ kind: 'asked', requestId, txHash: result.txHash })
 })
+
+function merchantName(address: string): string {
+  return MERCHANTS.find((m) => m.address.toLowerCase() === address.toLowerCase())?.name
+    ?? `${address.slice(0, 6)}…${address.slice(-4)}`
+}

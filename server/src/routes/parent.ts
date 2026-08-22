@@ -7,7 +7,7 @@ import {
   AAVE, MERCHANTS, aAssetRead, buildDepositBatch, buildGrantBatch, buildRevokeBatch,
   erc20, eventArgFromLogs, formatUnits, managerIface, managerRead, MANAGER, parseUnits,
 } from '../chain.js'
-import { mustFamily, save } from '../store.js'
+import { mustFamily, record, save } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { currentSession } from './join.js'
 
@@ -46,6 +46,7 @@ parentRoutes.post('/api/deposit', async (c) => {
   const f = mustFamily()
   f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
   save()
+  record({ kind: 'deposit', text: `Added ${amount} to the pot`, amount: String(amount), txHash: result.txHash })
   return c.json({ txHash: result.txHash, userOpHash: hash })
 })
 
@@ -77,6 +78,12 @@ parentRoutes.post('/api/members/:id/grant', async (c) => {
   member.caps = { perTx: String(perTx), period: String(period), periodLength: Number(periodLength), expiry: Number(expiry) }
   member.grantTx = result.txHash
   save()
+  record({
+    kind: 'allowance',
+    text: `${member.name} can spend up to ${perTx} per purchase, ${period} per week`,
+    memberId: member.id,
+    txHash: result.txHash,
+  })
   return c.json({ scopeId, txHash: result.txHash })
 })
 
@@ -94,6 +101,7 @@ parentRoutes.post('/api/members/:id/revoke', async (c) => {
     return c.json({ error: 'Revoke failed — try again.' }, 502)
   }
   save()
+  record({ kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
   return c.json({ txHash: result.txHash })
 })
 
@@ -122,6 +130,16 @@ parentRoutes.post('/api/requests/:requestId/:verdict', async (c) => {
   req.status = verdict === 'approve' ? 'approved' : 'denied'
   req.txHash = result.txHash
   save()
+  const who = f.members.find((m) => m.id === req.memberId)?.name ?? 'A member'
+  record({
+    kind: verdict === 'approve' ? 'approved' : 'denied',
+    text: verdict === 'approve'
+      ? `Approved ${who}'s ${req.amount} to ${req.toName}`
+      : `Declined ${who}'s ${req.amount} to ${req.toName}`,
+    amount: req.amount,
+    memberId: req.memberId,
+    txHash: result.txHash,
+  })
   return c.json({ txHash: result.txHash })
 })
 
@@ -154,8 +172,12 @@ parentRoutes.get('/api/state', async (c) => {
   return c.json({
     familyName: f.name,
     symbol: AAVE.SYMBOL,
+    // The wallet: the parent's own account and the pot it holds. Members
+    // never receive any of this.
+    wallet: { address: s.address, pot: formatUnits(pool), vault: AAVE.A_ASSET, asset: AAVE.ASSET },
     pool: formatUnits(pool),
     deposits: f.deposits,
+    activity: f.activity,
     members,
     pendingRequests: f.requests.filter((r) => r.status === 'pending').map((r) => ({
       ...r, memberName: f.members.find((m) => m.id === r.memberId)?.name ?? '?',

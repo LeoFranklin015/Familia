@@ -26,7 +26,7 @@ echo "member: $MEMBER"
 step "2b. parent grants Sam a scope: 50 per tx, 120 per week"
 MID=$(get "$PJ" /api/state | jqr "['members'][0]['id']")
 post "$PJ" "/api/members/$MID/grant" '{"perTx":"50","period":"120","periodLengthDays":7}' | jqr "['scopeId']"
-get "$MJ" /api/me | jqr "['spendable']"
+get "$MJ" /api/me | jqr "['headroom']"
 
 step "3. member spends 8 USD₮ at Corner Store — redeemed from savings, straight to merchant, zero gas"
 post "$MJ" /api/spend '{"to":"0x1111000000000000000000000000000000001111","amount":"8"}'
