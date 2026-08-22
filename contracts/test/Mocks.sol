@@ -43,6 +43,12 @@ contract MockERC20 {
         return true;
     }
 
+    /// Test-only stand-in for Aave's internal burn (no allowance needed).
+    function burnFor(address from, uint256 amount) external {
+        require(balanceOf[from] >= amount, "balance");
+        balanceOf[from] -= amount;
+    }
+
     function _move(address from, address to, uint256 amount) internal {
         require(balanceOf[from] >= amount, "balance");
         balanceOf[from] -= amount;
@@ -64,7 +70,7 @@ contract MockPool {
     function withdraw(address asset, uint256 amount, address to) external returns (uint256) {
         require(asset == address(underlying), "wrong asset");
         require(aToken.balanceOf(msg.sender) >= amount, "no atokens");
-        aToken.transferFrom(msg.sender, address(this), amount); // stand-in for burn
+        aToken.burnFor(msg.sender, amount);
         underlying.transfer(to, amount);
         return amount;
     }

@@ -12,4 +12,7 @@ remappings = [
   "forge-std/=lib/forge-std/src/",
   "account-abstraction/=lib/account-abstraction/contracts/",
   "aave-address-book/=lib/aave-address-book/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "aave-v3-origin/=lib/aave-address-book/lib/aave-v3-origin/src/",
+  "solidity-utils/=lib/aave-address-book/lib/aave-v3-origin/lib/solidity-utils/src/",
 ]
