@@ -1,10 +1,17 @@
 // Addresses, interfaces and calldata builders. Token addresses come from the
 // canonical Aave address book — never pasted hex.
 //
-// The family money is USD₮ — Aave's Sepolia testnet USDT, which the Aave
-// faucet mints freely. See SAVINGS_MODE below for how the pot is held.
+// Base Sepolia. The family money is USD₮ supplied to Aave V3's real pool, so
+// the parent holds genuine aUSDT and a member's spend redeems it through Aave
+// itself — no vault of ours anywhere in the path.
+//
+// Why not Ethereum Sepolia: its Aave USDT reserve sits ~2x over its supply cap
+// and reverts with error 51 for any amount (so do USDC and DAI). Base
+// Sepolia's USDT reserve is uncapped, faucet-mintable and liquid. The trade is
+// that Pimlico/Candide only price gas in USD₮ on Ethereum Sepolia, so here
+// every operation is fully sponsored instead — which the track allows.
 import { ethers } from 'ethers'
-import { AaveV3Sepolia } from '@bgd-labs/aave-address-book'
+import { AaveV3BaseSepolia } from '@bgd-labs/aave-address-book'
 
 // This module reads env at import time, so the env file loads here — ESM
 // hoists imports, which makes loading it in index.ts too late.
@@ -12,44 +19,28 @@ try {
   process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 } catch { /* fine in environments that export the vars directly */ }
 
-export const CHAIN_ID = 11155111
+export const CHAIN_ID = 84532
 
-export const SAVINGS_VAULT = process.env.SAVINGS_VAULT ?? ''
-
-/**
- * How the pot is held.
- *
- *  'direct' (default) — the pot is plain USD₮ sitting in the parent's own
- *      account. A spend is one `transferFrom(parent → merchant)`, so the only
- *      token that ever appears on a block explorer is USD₮ itself. Nothing to
- *      explain to anyone.
- *
- *  'vault' — the pot is deposited into SavingsVault and the parent holds a
- *      receipt token, which the manager redeems on spend. This is the shape a
- *      yield-bearing position has (aUSDT on mainnet), and the contract handles
- *      it through the same `_settle` branch. It costs an extra token in the
- *      trace, which is only worth it when the position actually earns —
- *      and on Sepolia USD₮ cannot be supplied to Aave at all (error 51,
- *      SUPPLY_CAP_EXCEEDED: the reserve is ~2x over its cap).
- */
-export const SAVINGS_MODE = (process.env.SAVINGS_MODE ?? 'direct') as 'direct' | 'vault'
-
-const USDT = AaveV3Sepolia.ASSETS.USDT.UNDERLYING as string
+/** Aave's public testnet faucet on Base Sepolia — the token's owner, and
+ *  unpermissioned (`isPermissioned() == false`), so the parent can mint their
+ *  own test USD₮ inside their first sponsored operation. */
+const FAUCET = '0xD9145b5F45Ad4519c7ACcD6E0A4A82e83bB8A6Dc'
 
 export const AAVE = {
-  FAUCET: AaveV3Sepolia.FAUCET as string,
-  ASSET: USDT,
-  // The token the manager pulls from the funder. In direct mode it is USD₮
-  // itself, which is what makes `source == asset` a plain ERC-20 pull.
-  A_ASSET: SAVINGS_MODE === 'vault' ? SAVINGS_VAULT : USDT,
-  POOL: SAVINGS_MODE === 'vault' ? SAVINGS_VAULT : USDT,
+  FAUCET,
+  POOL: AaveV3BaseSepolia.POOL as string,
+  ASSET: AaveV3BaseSepolia.ASSETS.USDT.UNDERLYING as string,
+  // Aave's own aUSDT: what the parent holds, and what the manager pulls and
+  // redeems on a spend. Interest-bearing and rebasing, so balances are always
+  // read inside the transaction and never cached.
+  A_ASSET: AaveV3BaseSepolia.ASSETS.USDT.A_TOKEN as string,
   DECIMALS: 6,
   SYMBOL: 'USD₮',
 }
 
 export const MANAGER = requireEnv('SCOPED_SPEND_MANAGER_ADDRESS')
 export const DELEGATION_ADDRESS = requireEnv('DELEGATION_ADDRESS')
-export const SEPOLIA_RPC_URL = requireEnv('SEPOLIA_RPC_URL')
+export const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
 export const BUNDLER_URL = `https://api.pimlico.io/v2/${CHAIN_ID}/rpc?apikey=${requireEnv('PIMLICO_API_KEY')}`
 export const POLICY_ID = process.env.POLICY_ID || undefined
 
@@ -60,7 +51,7 @@ export const MERCHANTS = [
   { name: 'Game Pass', address: '0x3333000000000000000000000000000000003333' },
 ]
 
-export const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL)
+export const provider = new ethers.JsonRpcProvider(RPC_URL)
 
 export const erc20 = new ethers.Interface([
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -71,8 +62,7 @@ export const faucetIface = new ethers.Interface([
   'function mint(address token, address to, uint256 amount) returns (uint256)',
 ])
 export const poolIface = new ethers.Interface([
-  'function deposit(uint256 amount)',
-  // Aave's own signature; the vault matches it so the manager is agnostic.
+  'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
   'function withdraw(address asset, uint256 amount, address to) returns (uint256)',
 ])
 export const managerIface = new ethers.Interface([
@@ -102,16 +92,14 @@ export type Tx = { to: string; value: bigint; data: string }
  *  deposit — one batched, sponsored UserOperation, from an account that starts
  *  with nothing at all (not even gas). */
 export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
-  const mint = { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) }
-  if (SAVINGS_MODE === 'direct') return [mint]
   return [
-    mint,
+    { to: AAVE.FAUCET, value: 0n, data: faucetIface.encodeFunctionData('mint', [AAVE.ASSET, parent, amount]) },
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
-    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('deposit', [amount]) },
+    { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
   ]
 }
 
-/** Grant a member a scope and (re)bound the manager's aToken allowance to the
+/** Grant a member a scope and (re)bound the manager's aUSDT allowance to the
  *  sum of outstanding period caps — never unlimited. One batched UserOp. */
 export function buildGrantBatch(opts: {
   spender: string

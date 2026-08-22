@@ -110,7 +110,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
         {state.kind === 'sent' && (
           <div className="note ok">
             Paid. {state.txHash && (
-              <a className="txlink" href={`https://sepolia.etherscan.io/tx/${state.txHash}`} target="_blank" rel="noreferrer">see it ↗</a>
+              <a className="txlink" href={`https://sepolia.basescan.org/tx/${state.txHash}`} target="_blank" rel="noreferrer">see it ↗</a>
             )}
           </div>
         )}
@@ -150,7 +150,7 @@ function History({
             <div className="meta">{new Date(a.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
           </div>
           {a.txHash && (
-            <a className="txlink" href={`https://sepolia.etherscan.io/tx/${a.txHash}`} target="_blank" rel="noreferrer">↗</a>
+            <a className="txlink" href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer">↗</a>
           )}
         </div>
       ))}

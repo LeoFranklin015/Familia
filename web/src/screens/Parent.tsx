@@ -254,7 +254,7 @@ function ActivityList({ st }: { st: ParentState }) {
             </div>
           </div>
           {a.txHash && (
-            <a className="txlink" href={`https://sepolia.etherscan.io/tx/${a.txHash}`} target="_blank" rel="noreferrer">↗</a>
+            <a className="txlink" href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer">↗</a>
           )}
         </div>
       ))}

@@ -3,7 +3,7 @@
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { randomBytes } from 'node:crypto'
-import { BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, POLICY_ID, SEPOLIA_RPC_URL } from './chain.js'
+import { BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, POLICY_ID, RPC_URL } from './chain.js'
 
 // The concrete account type is resolved at runtime; keep a structural type.
 export type GaslessAccount = {
@@ -23,7 +23,7 @@ export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}
   // Cast: the beta .d.ts types registerWallet against the base WalletManager,
   // whose config is optional — structurally fine at runtime.
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as unknown as Parameters<WDK['registerWallet']>[1], {
-    provider: SEPOLIA_RPC_URL,
+    provider: RPC_URL,
     bundlerUrl: BUNDLER_URL,
     delegationAddress: DELEGATION_ADDRESS,
     isSponsored: true,
