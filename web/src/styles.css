@@ -125,13 +125,27 @@ button.ask { background: var(--amber-soft); color: var(--amber); border: 1px sol
   background: var(--green-soft); color: var(--green);
   font-size: 0.75rem; font-weight: 700; display: grid; place-items: center;
 }
-a.primary.block {
-  display: block; text-align: center; text-decoration: none;
-  background: var(--ink); color: #fff; padding: 14px; border-radius: 12px;
-  font-weight: 600; margin-top: 14px;
-}
 button.mini.wide { width: 100%; margin-top: 10px; }
 label.left { text-align: left; }
+
+/* Onboarding: exactly one filled button per screen. Every alternative is a
+   text link, so there is never a question about which one is the action. */
+.onboard { padding-top: 8px; }
+.onboard h1 { font-size: 1.65rem; line-height: 1.2; margin-bottom: 8px; }
+.onboard .sub { font-size: 0.98rem; line-height: 1.5; margin-bottom: 22px; }
+.crumb {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px;
+}
+.alt { text-align: center; margin-top: 16px; font-size: 0.9rem; color: var(--ink-2); }
+.alt.dim { color: var(--ink-3); font-size: 0.84rem; margin-top: 10px; }
+button.link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-size: inherit; font-weight: 600; color: var(--green);
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+button.link:hover { color: var(--ink); }
 
 /* — tabs — */
 .tabs { display: flex; gap: 4px; background: #eef1ee; padding: 4px; border-radius: 12px; margin-bottom: 14px; }

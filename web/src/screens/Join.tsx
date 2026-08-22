@@ -4,11 +4,16 @@ import { createPasskey, webauthnAvailable } from '../webauthn'
 
 type Invite = { familyName: string; inviteeName: string; isParent: boolean }
 
+/**
+ * What an invited person sees. Same rule as onboarding: one primary action,
+ * the alternative is a quiet link. No mention of wallets, funding or keys —
+ * from their side this is just "tap to get set up".
+ */
 export default function Join({ token, onJoined }: { token: string; onJoined: () => void }) {
   const [invite, setInvite] = useState<Invite | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [needPassphrase, setNeedPassphrase] = useState(false)
+  const [usePassphrase, setUsePassphrase] = useState(false)
   const [passphrase, setPassphrase] = useState('')
 
   useEffect(() => {
@@ -21,74 +26,74 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
     onJoined()
   }
 
-  const joinWithPasskey = async () => {
+  const withFaceId = async () => {
     setErr(''); setBusy(true)
     try {
       const pk = await createPasskey(invite!.inviteeName)
-      if (!pk) {
-        // PRF unsupported here — same vault, passphrase-derived key instead.
-        setNeedPassphrase(true)
-        return
-      }
+      if (!pk) { setUsePassphrase(true); return }
       await finish({ credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
-  const joinWithPassphrase = async () => {
+  const withPassphrase = async () => {
     setErr(''); setBusy(true)
-    try {
-      await finish({ passphrase })
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Something went wrong.')
-    } finally {
-      setBusy(false)
-    }
+    try { await finish({ passphrase }) }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Something went wrong.') }
+    finally { setBusy(false) }
   }
 
   if (err && !invite) {
     return (
-      <div>
+      <div className="onboard">
         <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
-        <div className="note err">{err}</div>
+        <h1>This link's no good.</h1>
+        <p className="sub">It may have been used already. Ask for a fresh one.</p>
       </div>
     )
   }
   if (!invite) return <div className="center" style={{ paddingTop: 80 }}><span className="spinner" /></div>
 
   return (
-    <div>
+    <div className="onboard">
       <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
       <h1>Hi {invite.inviteeName}.</h1>
       <p className="sub">
         {invite.isParent
-          ? <>You're setting up <strong>{invite.familyName}</strong>.</>
-          : <>You've been invited to <strong>{invite.familyName}</strong>.</>}
-        {' '}One tap creates your account — nothing to install, nothing to fund, no codes to write down.
+          ? <>Finish setting up <b>{invite.familyName}</b>.</>
+          : <><b>{invite.familyName}</b> added you. One tap and you can start paying —
+             nothing to install, nothing to top up.</>}
       </p>
 
-      <div className="card stack">
-        {!needPassphrase && webauthnAvailable() && (
-          <button className="primary" onClick={joinWithPasskey} disabled={busy}>
-            {busy ? <><span className="spinner" />Creating your account…</> : 'Continue with Face ID'}
+      {!usePassphrase ? (
+        <>
+          <button className="primary" onClick={withFaceId} disabled={busy}>
+            {busy ? <><span className="spinner" />Setting you up…</> : 'Use Face ID'}
           </button>
-        )}
-        {!needPassphrase && (
-          <button className="mini" onClick={() => setNeedPassphrase(true)}>Use a passphrase instead</button>
-        )}
-        {needPassphrase && (
-          <>
-            <label>Choose a passphrase (at least 8 characters)</label>
-            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
-            <button className="primary" onClick={joinWithPassphrase} disabled={busy || passphrase.length < 8}>
-              {busy ? <><span className="spinner" />Creating your account…</> : 'Create my account'}
-            </button>
-          </>
-        )}
-      </div>
+          {!webauthnAvailable() && (
+            <p className="alt dim">This browser has no Face ID — use a passphrase.</p>
+          )}
+          <p className="alt">
+            <button className="link" onClick={() => setUsePassphrase(true)}>Use a passphrase instead</button>
+          </p>
+        </>
+      ) : (
+        <>
+          <label>Choose a passphrase</label>
+          <input type="password" placeholder="At least 8 characters" value={passphrase} autoFocus
+            onChange={(e) => setPassphrase(e.target.value)} />
+          <button className="primary" onClick={withPassphrase} disabled={busy || passphrase.length < 8}>
+            {busy ? <><span className="spinner" />Setting you up…</> : "I'm ready"}
+          </button>
+          {webauthnAvailable() && (
+            <p className="alt">
+              <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID instead</button>
+            </p>
+          )}
+        </>
+      )}
+
       {err && <div className="note err">{err}</div>}
     </div>
   )

@@ -1,127 +1,197 @@
 import { useState } from 'react'
 import { api } from '../api'
-import { unlockPasskey, webauthnAvailable } from '../webauthn'
+import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
 
-type Step = 'welcome' | 'name' | 'created' | 'unlock'
+type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
 /**
- * First run. Three ideas, one screen each: what this is, who you are, and the
- * link that turns into an account. No wallet vocabulary anywhere — the person
- * setting this up is a parent, not a crypto user.
+ * First run. One decision per screen, and exactly one primary button on each —
+ * the alternative is always a quiet text link underneath, never a second
+ * button that competes with it.
+ *
+ * Setting up a family finishes in one pass: name it, then create the account.
+ * The invite link is how *other people* join; the person starting the family
+ * never has to touch one.
  */
 export default function Onboarding({ onReady }: { onReady: () => void }) {
   const [step, setStep] = useState<Step>('welcome')
   const [famName, setFamName] = useState('')
   const [parentName, setParentName] = useState('')
-  const [joinPath, setJoinPath] = useState('')
+  const [token, setToken] = useState('')
   const [passphrase, setPassphrase] = useState('')
+  const [usePassphrase, setUsePassphrase] = useState(false)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const create = async () => {
+  const go = (s: Step) => { setErr(''); setUsePassphrase(false); setStep(s) }
+
+  /** Reserve the family, keep its setup token, and move on to securing it. */
+  const nameFamily = async () => {
     setErr(''); setBusy(true)
     try {
       const r = await api.post<{ joinPath: string }>('/api/family', { name: famName, parentName })
-      setJoinPath(r.joinPath)
-      setStep('created')
+      setToken(r.joinPath.split('/').pop()!)
+      setStep('secure')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not create the family.')
+      setErr(e instanceof Error ? e.message : 'Could not start the family.')
     } finally { setBusy(false) }
   }
 
-  const unlockWithPasskey = async () => {
+  const finish = async (body: Record<string, string>) => {
+    const r = await api.post<{ credentialId: string }>(`/api/join/${token}`, body)
+    localStorage.setItem('kin_credentialId', r.credentialId)
+    onReady()
+  }
+
+  const createWithFaceId = async () => {
+    setErr(''); setBusy(true)
+    try {
+      const pk = await createPasskey(parentName)
+      if (!pk) { setUsePassphrase(true); return } // no PRF here — same vault, different key
+      await finish({ credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not create your account.')
+    } finally { setBusy(false) }
+  }
+
+  const createWithPassphrase = async () => {
+    setErr(''); setBusy(true)
+    try { await finish({ passphrase }) }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not create your account.') }
+    finally { setBusy(false) }
+  }
+
+  const signInFaceId = async () => {
     setErr(''); setBusy(true)
     try {
       const pk = await unlockPasskey()
-      if (!pk) throw new Error('This device could not use a passkey. Use your passphrase.')
+      if (!pk) throw new Error('This device could not use a passkey. Try your passphrase.')
       await api.post('/api/session', { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
       onReady()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not unlock.')
+      setErr(e instanceof Error ? e.message : 'Could not sign in.')
     } finally { setBusy(false) }
   }
 
-  const unlockWithPassphrase = async () => {
+  const signInPassphrase = async () => {
     setErr(''); setBusy(true)
     try {
       const credentialId = localStorage.getItem('kin_credentialId')
-      if (!credentialId) throw new Error('No account on this device. Open your invite link instead.')
+      if (!credentialId) throw new Error("There's no account on this device yet.")
       await api.post('/api/session', { credentialId, passphrase })
       onReady()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not unlock.')
+      setErr(e instanceof Error ? e.message : 'Could not sign in.')
     } finally { setBusy(false) }
   }
 
   return (
-    <div>
+    <div className="onboard">
       <div className="topbar"><span className="brand">kin<span className="dot">.</span></span></div>
 
       {step === 'welcome' && (
         <>
           <h1>Pocket money that can't go wrong.</h1>
           <p className="sub">
-            One pot the family shares. You set what each person can spend; the limits are
-            enforced by the network, not by trust. Nobody needs an app, a card, or anything
-            explained to them.
+            One pot the family shares. You decide what each person can spend, and the
+            limits hold on their own — no card to cancel, no app for them to install.
           </p>
           <ol className="steps">
-            <li><b>Put money in the pot.</b> It stays yours the whole time.</li>
-            <li><b>Send a link.</b> They tap it once and they're set up.</li>
-            <li><b>They just pay.</b> Inside your limits, it goes through.</li>
+            <li><b>Put money in the pot.</b> It stays in your own account.</li>
+            <li><b>Send a link.</b> One tap and they're ready.</li>
+            <li><b>They just pay.</b> Within your limits it goes straight through.</li>
           </ol>
-          <button className="primary" onClick={() => setStep('name')}>Set up my family</button>
-          <button className="mini wide" onClick={() => setStep('unlock')}>I already have an account</button>
-        </>
-      )}
-
-      {step === 'name' && (
-        <>
-          <h1>Who's this for?</h1>
-          <p className="sub">Just so the people you invite recognise it.</p>
-          <div className="card">
-            <label>Family name</label>
-            <input type="text" placeholder="The Riveras" value={famName}
-              onChange={(e) => setFamName(e.target.value)} autoFocus />
-            <label>Your name</label>
-            <input type="text" placeholder="Alex" value={parentName}
-              onChange={(e) => setParentName(e.target.value)} />
-            <button className="primary" onClick={create} disabled={busy || !famName || !parentName}>
-              {busy ? <><span className="spinner" />Creating…</> : 'Continue'}
-            </button>
-          </div>
-          <button className="mini wide" onClick={() => setStep('welcome')}>Back</button>
-        </>
-      )}
-
-      {step === 'created' && (
-        <>
-          <h1>One last tap.</h1>
-          <p className="sub">
-            Open this to finish setting up your own account with Face ID. It's the same kind
-            of link you'll send everyone else.
+          <button className="primary" onClick={() => go('names')}>Start a family</button>
+          <p className="alt">
+            Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
           </p>
-          <a className="primary block" href={joinPath}>Finish setup</a>
-          <div className="linkbox">{location.origin}{joinPath}</div>
+          <p className="alt dim">Been sent an invite? Just open that link.</p>
         </>
       )}
 
-      {step === 'unlock' && (
+      {step === 'names' && (
+        <>
+          <p className="crumb">Step 1 of 2</p>
+          <h1>Name your family.</h1>
+          <p className="sub">So the people you invite know it's you.</p>
+          <label>Family name</label>
+          <input type="text" placeholder="The Riveras" value={famName} autoFocus
+            onChange={(e) => setFamName(e.target.value)} />
+          <label>Your first name</label>
+          <input type="text" placeholder="Alex" value={parentName}
+            onChange={(e) => setParentName(e.target.value)} />
+          <button className="primary" onClick={nameFamily} disabled={busy || !famName.trim() || !parentName.trim()}>
+            {busy ? <><span className="spinner" />One moment…</> : 'Continue'}
+          </button>
+          <p className="alt"><button className="link" onClick={() => go('welcome')}>Back</button></p>
+        </>
+      )}
+
+      {step === 'secure' && (
+        <>
+          <p className="crumb">Step 2 of 2</p>
+          <h1>Lock it to you, {parentName}.</h1>
+          <p className="sub">
+            Your face is the key. Nothing to write down, nothing to lose — and only this
+            device can open the pot.
+          </p>
+          {!usePassphrase ? (
+            <>
+              <button className="primary" onClick={createWithFaceId} disabled={busy}>
+                {busy ? <><span className="spinner" />Setting up…</> : 'Use Face ID'}
+              </button>
+              {!webauthnAvailable() && (
+                <p className="alt dim">This browser has no Face ID — use a passphrase.</p>
+              )}
+              <p className="alt">
+                <button className="link" onClick={() => setUsePassphrase(true)}>Use a passphrase instead</button>
+              </p>
+            </>
+          ) : (
+            <>
+              <label>Choose a passphrase</label>
+              <input type="password" placeholder="At least 8 characters" value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)} autoFocus />
+              <button className="primary" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
+                {busy ? <><span className="spinner" />Setting up…</> : 'Create my account'}
+              </button>
+              {webauthnAvailable() && (
+                <p className="alt">
+                  <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID instead</button>
+                </p>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {step === 'signin' && (
         <>
           <h1>Welcome back.</h1>
-          <div className="card stack">
-            {webauthnAvailable() && (
-              <button className="primary" onClick={unlockWithPasskey} disabled={busy}>
-                {busy ? <><span className="spinner" />Unlocking…</> : 'Unlock with Face ID'}
+          <p className="sub">Same face, same account.</p>
+          {!usePassphrase ? (
+            <>
+              <button className="primary" onClick={signInFaceId} disabled={busy}>
+                {busy ? <><span className="spinner" />Opening…</> : 'Sign in with Face ID'}
               </button>
-            )}
-            <label>Or your passphrase</label>
-            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
-            <button className="mini wide" onClick={unlockWithPassphrase} disabled={busy || passphrase.length < 8}>
-              Unlock with passphrase
-            </button>
-            <button className="mini wide" onClick={() => setStep('welcome')}>Back</button>
-          </div>
+              <p className="alt">
+                <button className="link" onClick={() => setUsePassphrase(true)}>Use my passphrase</button>
+              </p>
+            </>
+          ) : (
+            <>
+              <label>Your passphrase</label>
+              <input type="password" value={passphrase} autoFocus
+                onChange={(e) => setPassphrase(e.target.value)} />
+              <button className="primary" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
+                {busy ? <><span className="spinner" />Opening…</> : 'Sign in'}
+              </button>
+              <p className="alt">
+                <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID</button>
+              </p>
+            </>
+          )}
+          <p className="alt"><button className="link" onClick={() => go('welcome')}>Back</button></p>
         </>
       )}
 
