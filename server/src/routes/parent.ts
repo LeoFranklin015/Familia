@@ -310,6 +310,10 @@ parentRoutes.get('/api/state', async (c) => {
       asset: AAVE.ASSET,
       // Fees: the parent pays their own in USD₮ once bootstrapped; members
       // are always sponsored.
+      // Two balances, because they behave differently: the pot is in Aave and
+      // earning, this is loose USD₮ in the account — what deposits come from
+      // and what fees are charged against.
+      loose: formatUnits(feeBalance),
       feeBalance: formatUnits(feeBalance),
       feeMode: paysInUsdt ? 'usdt' : 'sponsored',
       paymaster: USDT_PAYMASTER || null,

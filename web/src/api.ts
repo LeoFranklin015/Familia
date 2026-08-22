@@ -44,7 +44,9 @@ export type ParentState = {
     pot: string
     vault: string
     asset: string
-    /** USD₮ held outside Aave, which is what pays this account's own fees. */
+    /** USD₮ sitting in the account, outside Aave: what deposits are funded
+     *  from and what network fees are charged against. */
+    loose: string
     feeBalance: string
     feeMode: 'usdt' | 'sponsored'
     paymaster: string | null

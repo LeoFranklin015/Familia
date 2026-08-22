@@ -212,3 +212,10 @@ h2.plain { text-transform: none; letter-spacing: -0.01em; font-size: 1.15rem; co
   border-radius: 0 0 9px 9px; font-size: 0.8rem; color: var(--ink-2);
 }
 .steps-mini li { padding: 1px 0; }
+
+/* — the account's loose balance, distinct from the pot — */
+.balances { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.bal { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; text-align: left; }
+.bal-label { font-size: 0.88rem; color: var(--ink-2); }
+.bal-value { font-weight: 700; font-size: 0.98rem; text-align: right; }
+.bal-note { grid-column: 1 / -1; font-size: 0.76rem; color: var(--ink-3); }

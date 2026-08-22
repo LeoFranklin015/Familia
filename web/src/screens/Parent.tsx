@@ -170,17 +170,22 @@ function Wallet({ st, busy, run }: {
       <div className="card center">
         <h2>The pot</h2>
         <div className="big-number num">{st.wallet.pot}<span className="cur">{st.symbol}</span></div>
-        <div className="hint">
-          Held in your own account, not ours. Only you can see this.
+        <div className="hint">Earning in Aave. Held in your own account, not ours.</div>
+
+        <div className="balances">
+          <div className="bal">
+            <span className="bal-label">In your account</span>
+            <span className="bal-value num">{st.wallet.loose} {st.symbol}</span>
+            <span className="bal-note">outside Aave — funds deposits and fees</span>
+          </div>
         </div>
-        <div className="hint">
-          {Number(st.wallet.feeBalance) > 0
-            ? `${st.wallet.feeBalance} ${st.symbol} available to add`
-            : 'Nothing left to add — the test faucet tops up once a day.'}
-        </div>
+
         <label className="left">Add money</label>
         <input className="num" inputMode="decimal" placeholder="500" value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} />
+        {Number(st.wallet.loose) === 0 && (
+          <div className="hint">Nothing in the account to add — the test faucet tops up once a day.</div>
+        )}
         <FeeLine quote={depositQuote} symbol={st.symbol} />
         <button className="primary" disabled={busy !== null || !Number(amount)}
           onClick={() => run('deposit', () => api.post('/api/deposit', { amount }),
@@ -198,7 +203,7 @@ function Wallet({ st, busy, run }: {
                 <div className="name">You pay your own fees in {st.symbol}</div>
                 <div className="meta">No ETH, no native token — never any.</div>
               </div>
-              <div className="num">{st.wallet.feeBalance}</div>
+              <div className="num">{st.wallet.loose} {st.symbol}</div>
             </div>
             <p className="hint mt8">
               Every fee you see quoted is charged in {st.symbol} from this balance. A
