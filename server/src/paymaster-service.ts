@@ -92,9 +92,3 @@ paymasterService.post('/paymaster', async (c) => {
   }
 })
 
-/** What a member/parent would be charged, in USD₮, for a given gas cost. */
-export async function quoteUsdtFee(gasCostWei: bigint): Promise<bigint> {
-  if (!USDT_PAYMASTER) return 0n
-  const pm = new ethers.Contract(USDT_PAYMASTER, paymasterIface, provider)
-  return (await pm.quote(gasCostWei)) as bigint
-}

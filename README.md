@@ -101,6 +101,26 @@ Three properties that hold throughout:
   `type(uint256).max`. Approving an over-cap request raises the allowance by
   exactly that amount, settles, and puts it back, all in one atomic operation.
 
+### On the token, and the brief's rule about it
+
+The brief says that on non-Sepolia EVMs you should deploy your own mock USD₮
+rather than substitute another stablecoin provider's faucet token. Worth
+addressing directly, because this runs on Base Sepolia.
+
+The pot's asset is **Aave's own Base Sepolia USD₮** (`0x0a215D8b…`) — a token
+denominated in USD₮, not a different stablecoin wearing the name. It is used
+rather than a mock we deploy for one reason: the product's claim is a *real Aave
+position*, and Aave only accepts the reserve tokens it has listed. A mock USD₮
+of ours would be accepted by no lending protocol anywhere, which would turn the
+savings leg back into something we wrote ourselves — the thing the rule exists
+to prevent.
+
+Where the rule does apply is the paymaster, and there we followed it: no
+provider prices gas in USD₮ on this chain, so we deployed our own paymaster and
+pointed the config at it, which is exactly the "point the paymaster config at
+it" half of the instruction. Nothing here substitutes USDC, EURC or any other
+stablecoin for USD₮ at any point — not as the money, and not as the gas token.
+
 ### Contracts (Base Sepolia)
 
 | Contract | Address |
