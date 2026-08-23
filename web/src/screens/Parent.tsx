@@ -394,6 +394,7 @@ function Home({
           <Figure value={pot} live={(st.wallet.apr ?? 0) > 0} />
         </div>
         <div className="note mt3">
+          {(st.wallet.apr ?? 0) > 0 && <span className="livedot" aria-hidden="true" />}
           {st.symbol} · earning {apyText(st.wallet.apr ?? 0)} in Aave
         </div>
         <button className="chip tap mt4" onClick={copy} aria-label="Copy your account address">

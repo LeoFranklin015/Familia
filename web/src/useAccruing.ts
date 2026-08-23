@@ -3,10 +3,15 @@ import { useEffect, useRef, useState } from 'react'
 /** Aave's year, in seconds. The pool uses this exact constant. */
 const YEAR = 31_536_000
 
-/** Digits carried past USDT's own six. See the note below. */
-export const EXTRA_DP = 4
+/**
+ * Digits carried past USDT's own six.
+ *
+ * Three, not four. At a fourth the final digit changes about ten times a
+ * second, which reads as noise rather than as a number counting; at three it
+ * ticks around once a second, which is legibly alive.
+ */
+export const EXTRA_DP = 3
 const DP = 6 + EXTRA_DP
-const SCALE = 10n ** BigInt(DP)
 
 /**
  * A balance that keeps earning while you look at it.
@@ -55,9 +60,10 @@ export function useAccruing(
 
   useEffect(() => {
     if (!live) return
-    // Roughly ten frames a second: enough that the last digit reads as
-    // movement, cheap enough to leave running.
-    const t = setInterval(() => setNow(Date.now()), 100)
+    // Five times a second. The last digit only changes about once a second,
+    // so this is comfortably enough to catch it promptly without a timer
+    // running at animation speed for the life of the screen.
+    const t = setInterval(() => setNow(Date.now()), 200)
     return () => clearInterval(t)
   }, [live])
 

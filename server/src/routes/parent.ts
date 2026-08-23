@@ -620,6 +620,11 @@ parentRoutes.get('/api/state', async (c) => {
       // What "Add money" may actually offer: the loose balance minus the fee
       // headroom this account needs to keep paying its own way.
       addable: formatUnits(addable),
+      // Aave's supply rate, and when the balance above was read. Together
+      // these let the interface carry the figure forward between polls using
+      // the same linear-interest arithmetic the pool itself uses.
+      apr,
+      potAt: Date.now(),
       vault: AAVE.A_ASSET,
       asset: AAVE.ASSET,
       feeMode: paysInUsdt ? 'usdt' : 'sponsored',
