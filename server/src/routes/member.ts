@@ -6,10 +6,10 @@
 import { Hono, type Context } from 'hono'
 import { ethers } from 'ethers'
 import {
-  AAVE, MERCHANTS, eventArgFromLogs, formatUnits, humanizeManagerRevert,
+  AAVE, eventArgFromLogs, formatUnits, humanizeManagerRevert,
   managerIface, managerRead, MANAGER, parseUnits,
 } from '../chain.js'
-import { mustFamily, record, saveFamily } from '../store.js'
+import { mustFamily, record, saveFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
 
@@ -17,8 +17,10 @@ export const memberRoutes = new Hono()
 
 const REQUEST_TTL_S = 24 * 3600
 
-function merchantName(address: string): string {
-  return MERCHANTS.find((m) => m.address.toLowerCase() === address.toLowerCase())?.name
+/** A name for an address if the household has one, otherwise the address
+ *  itself, shortened. What ends up in the history either way. */
+function payeeName(family: Family, address: string): string {
+  return family.recipients.find((r) => r.address.toLowerCase() === address.toLowerCase())?.name
     ?? `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
@@ -47,19 +49,25 @@ memberRoutes.get('/api/me', async (c) => {
     resetsAt = Number(resets)
   }
 
-  // Deliberately narrow: a member is never told the size of the pot, nor
-  // anything about anyone else. `limit` is their own per-purchase ceiling —
-  // what the Pay/Ask affordance is built from — not a balance.
+  // Deliberately narrow: a member is never told the size of the household
+  // balance, nor anything about anyone else. `limit` is their own
+  // per-purchase ceiling — what the Pay/Ask affordance is built from — and
+  // `period` is their own weekly one. Neither is a balance.
   return c.json({
     name: member.name,
     familyName: family.name,
     symbol: AAVE.SYMBOL,
     hasAllowance: Boolean(member.scopeId && !member.revoked),
+    revoked: Boolean(member.revoked),
     limit: member.caps?.perTx ?? null,
+    period: member.caps?.period ?? null,
     headroom: spendable,
     spentThisPeriod: spent,
     resetsAt,
-    merchants: MERCHANTS,
+    // The book, so a member can pick a name instead of typing hex — and, when
+    // it is enforced, so they can be told which addresses will actually work.
+    recipients: family.recipients,
+    allowOnly: family.allowOnly,
     myRequests: family.requests.filter((r) => r.memberId === member.id),
     activity: family.activity.filter(
       (a) => a.memberId === member.id && ['payment', 'ask', 'approved', 'denied'].includes(a.kind),
@@ -99,7 +107,7 @@ memberRoutes.post('/api/spend', async (c) => {
           const result = await waitForUserOp(account, hash)
           if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
           record(family.id, {
-            kind: 'payment', text: `${member.name} paid ${amount} to ${merchantName(to)}`,
+            kind: 'payment', text: `${member.name} paid ${amount} to ${payeeName(family, to)}`,
             amount: String(amount), memberId: member.id, txHash: result.txHash,
           })
           return c.json({ kind: 'spent', txHash: result.txHash, userOpHash: hash })
@@ -122,12 +130,12 @@ memberRoutes.post('/api/spend', async (c) => {
 
       const f = mustFamily(family.id)
       f.requests.push({
-        requestId, memberId: member.id, to, toName: merchantName(to),
+        requestId, memberId: member.id, to, toName: payeeName(family, to),
         amount: String(amount), status: 'pending', createdAt: Date.now(), txHash: result.txHash,
       })
       saveFamily(f)
       record(family.id, {
-        kind: 'ask', text: `${member.name} asked to pay ${amount} to ${merchantName(to)}`,
+        kind: 'ask', text: `${member.name} asked to pay ${amount} to ${payeeName(family, to)}`,
         amount: String(amount), memberId: member.id, txHash: result.txHash,
       })
       return c.json({ kind: 'asked', requestId, txHash: result.txHash })

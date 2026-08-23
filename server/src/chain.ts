@@ -111,13 +111,6 @@ export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
  */
 export const MINT_CHUNK = 100_000_000000n // 100,000 USD₮
 
-// Demo merchants the member can pay. Deterministic, obviously-test addresses.
-export const MERCHANTS = [
-  { name: 'Corner Store', address: '0x1111000000000000000000000000000000001111' },
-  { name: 'Book Shop', address: '0x2222000000000000000000000000000000002222' },
-  { name: 'Game Pass', address: '0x3333000000000000000000000000000000003333' },
-]
-
 export const provider = new ethers.JsonRpcProvider(RPC_URL)
 
 export const erc20 = new ethers.Interface([
@@ -256,6 +249,27 @@ export async function planDeposit(parent: string, amount: bigint): Promise<
   return { ok: true, txs: [...topUp, ...buildDepositBatch(parent, amount)] }
 }
 
+/**
+ * Plan the guardian paying someone out of the household position.
+ *
+ * Refused up front when the position is too small, so the person sees "there
+ * isn't that much" before signing rather than a reverted simulation after.
+ */
+export async function planGuardianPay(parent: string, to: string, amount: bigint): Promise<
+  | { ok: true; txs: Tx[] }
+  | { ok: false; reason: string }
+> {
+  const held = (await aAssetRead.balanceOf(parent)) as bigint
+  if (amount > held) {
+    return {
+      ok: false,
+      reason: `The household balance is ${formatUnits(held)} ${AAVE.SYMBOL}. Nothing was spent.`,
+    }
+  }
+  const topUp = await maybeTopUpFeeAllowance(parent)
+  return { ok: true, txs: [...topUp, ...buildGuardianPayBatch(to, amount)] }
+}
+
 /** Whether this account can currently pay its own fees in USD₮: it needs a
  *  USD₮ balance and a standing approval to the paymaster. */
 export async function canPayFeesInUsdt(address: string): Promise<boolean> {
@@ -297,6 +311,69 @@ export function buildRevokeBatch(scopeId: string, newAllowanceTotal: bigint): Tx
     { to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('revoke', [scopeId]) },
     { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, newAllowanceTotal]) },
   ]
+}
+
+/**
+ * The id `grant` is about to mint, computed before it runs.
+ *
+ * The contract derives it as keccak(funder, spender, asset, source, nonce++),
+ * so with the nonce in hand the id is knowable in advance — which is what lets
+ * a grant and the allowlist that should apply to it go out as one atomic
+ * operation instead of two. Without this the new scope would exist, briefly,
+ * accepting any recipient while the interface claimed otherwise.
+ *
+ * `_nonce` has no getter, so it is read from its storage slot. The layout is
+ * fixed by declaration order and `pool` is immutable, so: _scopes 0,
+ * allowlist 1, _requests 2, _nonce 3.
+ *
+ * The nonce is shared across every funder on the contract, so a grant by
+ * another household between this read and our execution would shift it. That
+ * costs correctness nothing — `setAllowlist` checks the caller owns the scope,
+ * so a stale guess reverts the whole batch and the grant simply has not
+ * happened yet. Loud and atomic beats silently writing the wrong list.
+ */
+const NONCE_SLOT = 3n
+
+export async function predictScopeId(funder: string, spender: string): Promise<string> {
+  const raw = await provider.getStorage(MANAGER, NONCE_SLOT)
+  return ethers.solidityPackedKeccak256(
+    ['address', 'address', 'address', 'address', 'uint256'],
+    [funder, spender, AAVE.ASSET, AAVE.A_ASSET, BigInt(raw)],
+  )
+}
+
+/**
+ * Write the household's recipient book into scopes' allowlists.
+ *
+ * The contract holds one allowlist per scope, and treats an empty one as "any
+ * recipient" — so turning enforcement off means emptying it, not setting a
+ * flag. Because every scope needs the same edit, batching is what makes this
+ * one operation instead of one per person: a household of four costs the same
+ * fifteen seconds as a household of one.
+ */
+export function buildAllowlistBatch(
+  scopeIds: string[],
+  targets: string[],
+  allowed: boolean,
+): Tx[] {
+  if (scopeIds.length === 0 || targets.length === 0) return []
+  return scopeIds.map((id) => ({
+    to: MANAGER,
+    value: 0n,
+    data: managerIface.encodeFunctionData('setAllowlist', [id, targets, allowed]),
+  }))
+}
+
+/**
+ * The guardian paying someone directly out of the household position.
+ *
+ * They are the funder, not a spender, so no scope and no allowlist is
+ * involved — Aave burns their aUSDT and sends the underlying straight to the
+ * recipient, which is a single call. Nothing here can exceed the position,
+ * because Aave itself refuses to withdraw more than is held.
+ */
+export function buildGuardianPayBatch(to: string, amount: bigint): Tx[] {
+  return [{ to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('withdraw', [AAVE.ASSET, amount, to]) }]
 }
 
 export function parseUnits(v: string | number): bigint {

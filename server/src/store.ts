@@ -69,6 +69,22 @@ export type Activity = {
   at: number
 }
 
+/**
+ * Somewhere the household can pay — a shop or a person.
+ *
+ * The book itself is ordinary application data: naming an address costs
+ * nothing and is instant. What it means on-chain depends on `allowOnly`: when
+ * that is on, exactly these addresses are written into every active scope's
+ * allowlist, and the contract refuses anything else. The names never reach
+ * the chain — only the addresses do.
+ */
+export type Recipient = {
+  id: string
+  name: string
+  address: string
+  kind: 'SHOP' | 'PERSON'
+}
+
 export type Family = {
   id: string
   name: string
@@ -80,7 +96,19 @@ export type Family = {
   requests: SpendRequest[]
   deposits: Array<{ amount: string; txHash: string; at: number }>
   activity: Activity[]
+  /** Who the household can pay. */
+  recipients: Recipient[]
+  /** Whether the book is enforced on-chain, or merely a convenience. */
+  allowOnly: boolean
 }
+
+/** Shops every household starts with, so the first payment has somewhere to
+ *  go. Deterministic, obviously-test addresses. */
+export const STARTER_RECIPIENTS: Recipient[] = [
+  { id: 'r-corner', name: 'Corner Store', address: '0x1111000000000000000000000000000000001111', kind: 'SHOP' },
+  { id: 'r-books', name: 'Book Shop', address: '0x2222000000000000000000000000000000002222', kind: 'SHOP' },
+  { id: 'r-games', name: 'Game Pass', address: '0x3333000000000000000000000000000000003333', kind: 'SHOP' },
+]
 
 // --------------------------------------------------------------- families
 const familyPath = (id: string) => join(FAMILIES, `${id}.json`)
@@ -104,14 +132,24 @@ export function createFamily(name: string, parentName: string): { family: Family
     requests: [],
     deposits: [],
     activity: [],
+    recipients: STARTER_RECIPIENTS.map((r) => ({ ...r })),
+    allowOnly: false,
   }
   saveFamily(family)
   return { family, parentJoinToken: token }
 }
 
+/** Fill in fields added after a household was written. Households outlive
+ *  the schema, and a missing array should read as empty, not crash a route. */
+function normalize(f: Family): Family {
+  f.recipients ??= STARTER_RECIPIENTS.map((r) => ({ ...r }))
+  f.allowOnly ??= false
+  return f
+}
+
 export function getFamily(id: string): Family | null {
   const p = familyPath(id)
-  return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as Family) : null
+  return existsSync(p) ? normalize(JSON.parse(readFileSync(p, 'utf8')) as Family) : null
 }
 
 export function mustFamily(id: string): Family {
@@ -128,7 +166,7 @@ export function listFamilies(): Family[] {
   if (!existsSync(FAMILIES)) return []
   return readdirSync(FAMILIES)
     .filter((n) => n.endsWith('.json'))
-    .map((n) => JSON.parse(readFileSync(join(FAMILIES, n), 'utf8')) as Family)
+    .map((n) => normalize(JSON.parse(readFileSync(join(FAMILIES, n), 'utf8')) as Family))
 }
 
 /** Find the family holding an unused invite token, across all of them. */

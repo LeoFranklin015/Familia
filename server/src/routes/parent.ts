@@ -4,10 +4,12 @@
 // at that moment — these are the operations with no on-chain ceiling behind
 // them, so the only guard available is the person themselves.
 import { Hono, type Context } from 'hono'
+import { ethers } from 'ethers'
 import {
-  AAVE, MERCHANTS, aAssetRead, assetRead, buildGrantBatch, buildRevokeBatch,
+  AAVE, aAssetRead, assetRead, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch,
   canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits,
-  managerIface, managerRead, MANAGER, parseUnits, planDeposit, USDT_PAYMASTER,
+  managerIface, managerRead, MANAGER, parseUnits, planDeposit, planGuardianPay,
+  poolIface, predictScopeId, USDT_PAYMASTER,
 } from '../chain.js'
 import { mustFamily, record, saveFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -30,6 +32,27 @@ function outstandingCaps(family: Family, extra = 0n): bigint {
     if (m.scopeId && !m.revoked && m.caps) total += parseUnits(m.caps.period)
   }
   return total
+}
+
+/** Every scope the allowlist has to be written into. */
+function activeScopeIds(family: Family): string[] {
+  return family.members.filter((m) => m.scopeId && !m.revoked).map((m) => m.scopeId!)
+}
+
+/**
+ * Bring the on-chain allowlists in line with the recipient book, for the
+ * scopes given.
+ *
+ * Turning enforcement off empties the lists rather than clearing a flag,
+ * because the contract reads an empty allowlist as "anyone". These calls are
+ * always appended to whatever batch is already going out, so keeping the
+ * chain in step with the book never costs an extra operation.
+ */
+function allowlistCallsFor(family: Family, scopeIds: string[]) {
+  const targets = family.recipients.map((r) => r.address)
+  return family.allowOnly
+    ? buildAllowlistBatch(scopeIds, targets, true)
+    : buildAllowlistBatch(scopeIds, targets, false)
 }
 
 /** Wrap a parent write: authorise, act, and translate auth failures into
@@ -68,12 +91,12 @@ parentRoutes.post('/api/deposit', (c) =>
 
     family.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
     saveFamily(family)
-    record(family.id, { kind: 'deposit', text: `Added ${amount} to the pot`, amount: String(amount), txHash: result.txHash })
+    record(family.id, { kind: 'deposit', text: `You added ${amount} to the balance`, amount: String(amount), txHash: result.txHash })
     return c.json({ txHash: result.txHash, userOpHash: hash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
 
 parentRoutes.post('/api/members/:id/grant', (c) =>
-  parentWrite(c, async (account, family) => {
+  parentWrite(c, async (account, family, address) => {
     const member = family.members.find((m) => m.id === c.req.param('id'))
     if (!member) return c.json({ error: 'unknown member' }, 404)
 
@@ -88,6 +111,15 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
       expiry: expiryDays > 0 ? BigInt(Math.floor(Date.now() / 1000) + expiryDays * 86400) : 0n,
       newAllowanceTotal: outstandingCaps(family, periodCap),
     })
+
+    // A fresh scope starts with an empty allowlist, which the contract reads
+    // as "any recipient". When the household is enforcing its book, that
+    // list goes into the same operation as the grant — so the scope is never
+    // briefly wider than the interface says it is.
+    if (family.allowOnly && family.recipients.length > 0) {
+      const id = await predictScopeId(address, member.address)
+      batch.push(...allowlistCallsFor(family, [id]))
+    }
 
     const { hash } = await account.sendTransaction(batch)
     const result = await waitForUserOp(account, hash)
@@ -105,7 +137,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
     saveFamily(family)
     record(family.id, {
       kind: 'allowance',
-      text: `${member.name} can spend up to ${perTx} per purchase, ${period} per week`,
+      text: `${member.name}'s limits set — ${perTx} a purchase, ${period} a week`,
       memberId: member.id, txHash: result.txHash,
     })
     return c.json({ scopeId, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
@@ -127,6 +159,138 @@ parentRoutes.post('/api/members/:id/revoke', (c) =>
     record(family.id, { kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
     return c.json({ txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
+
+/**
+ * The guardian paying someone straight out of the household position.
+ *
+ * No scope, no allowlist, no limit — they are the funder, and the money is
+ * theirs. Aave enforces the only ceiling there is.
+ */
+parentRoutes.post('/api/pay', (c) =>
+  parentWrite(c, async (account, family, address) => {
+    const { to, amount } = await bodyOf<{ to: string; amount: string }>(c)
+    if (!ethers.isAddress(to)) return c.json({ error: "That doesn't look like an address." }, 400)
+    const value = parseUnits(String(amount))
+    if (value <= 0n) return c.json({ error: 'Enter an amount above zero.' }, 400)
+
+    const plan = await planGuardianPay(address, to, value)
+    if (!plan.ok) return c.json({ error: plan.reason }, 409)
+
+    const { hash } = await account.sendTransaction(plan.txs)
+    const result = await waitForUserOp(account, hash)
+    if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
+
+    record(family.id, {
+      kind: 'payment', text: `You paid ${amount} to ${recipientName(family, to)}`,
+      amount: String(amount), txHash: result.txHash,
+    })
+    return c.json({ txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
+  }))
+
+/** Add somewhere the household can pay. Naming an address is free and
+ *  instant; it only reaches the chain if the book is being enforced. */
+parentRoutes.post('/api/recipients', (c) => {
+  const ctx = parentOf(c)
+  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  return withRecipientChange(c, ctx.family, async (family) => {
+    const { name, address, kind = 'PERSON' } =
+      await bodyOf<{ name: string; address: string; kind?: 'SHOP' | 'PERSON' }>(c)
+    if (!name?.trim()) return 'Give them a name.'
+    if (!ethers.isAddress(address)) return "That doesn't look like an address."
+    if (family.recipients.some((r) => r.address.toLowerCase() === address.toLowerCase())) {
+      return 'That address is already on the list.'
+    }
+    family.recipients.push({
+      id: randomId(), name: name.trim(), address: ethers.getAddress(address),
+      kind: kind === 'SHOP' ? 'SHOP' : 'PERSON',
+    })
+    return null
+  })
+})
+
+parentRoutes.post('/api/recipients/:id/remove', (c) => {
+  const ctx = parentOf(c)
+  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  return withRecipientChange(c, ctx.family, async (family) => {
+    const before = family.recipients.length
+    family.recipients = family.recipients.filter((r) => r.id !== c.req.param('id'))
+    return before === family.recipients.length ? 'That one is not on the list.' : null
+  })
+})
+
+/**
+ * Turn the book into a rule, or back into a suggestion.
+ *
+ * This is the one recipient operation that always touches the chain, because
+ * it is the one that changes what the contract will accept.
+ */
+parentRoutes.post('/api/allowlist', (c) => {
+  const ctx = parentOf(c)
+  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  return withRecipientChange(c, ctx.family, async (family) => {
+    const { only } = await bodyOf<{ only: boolean }>(c)
+    family.allowOnly = Boolean(only)
+    return null
+  }, { always: true })
+})
+
+/**
+ * Apply a change to the recipient book, and push it on-chain when that
+ * changes what the contract would accept.
+ *
+ * Editing the book while it is only a convenience costs nothing and returns
+ * immediately. Editing it while it is enforced is a real operation across
+ * every active scope — batched into one, so a household of four costs the
+ * same as a household of one.
+ */
+async function withRecipientChange(
+  c: Context<any, any, any>,
+  family: Family,
+  edit: (family: Family) => Promise<string | null>,
+  opts: { always?: boolean } = {},
+): Promise<Response> {
+  const problem = await edit(family)
+  if (problem) return c.json({ error: problem }, 400)
+
+  const scopeIds = activeScopeIds(family)
+  const needsChain = (opts.always || family.allowOnly) && scopeIds.length > 0
+
+  if (!needsChain) {
+    saveFamily(family)
+    return c.json({ recipients: family.recipients, allowOnly: family.allowOnly, onchain: false })
+  }
+
+  // Save first: the book is what the next on-chain write is computed from, and
+  // a reverted sync should leave something a retry can converge from.
+  saveFamily(family)
+  return parentWrite(c, async (account) => {
+    const txs = allowlistCallsFor(family, scopeIds)
+    if (txs.length === 0) return c.json({ recipients: family.recipients, allowOnly: family.allowOnly, onchain: false })
+    const { hash } = await account.sendTransaction(txs)
+    const result = await waitForUserOp(account, hash)
+    if (!result.success) return c.json({ error: 'Updating the list on-chain failed — try again.' }, 502)
+    record(family.id, {
+      kind: 'allowance',
+      text: family.allowOnly
+        ? `Only ${family.recipients.length} ${family.recipients.length === 1 ? 'address' : 'addresses'} can be paid now`
+        : 'The family can pay anyone again',
+      txHash: result.txHash,
+    })
+    return c.json({
+      recipients: family.recipients, allowOnly: family.allowOnly,
+      onchain: true, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs),
+    })
+  })
+}
+
+function recipientName(family: Family, address: string): string {
+  return family.recipients.find((r) => r.address.toLowerCase() === address.toLowerCase())?.name
+    ?? `${address.slice(0, 6)}…${address.slice(-4)}`
+}
+
+function randomId(): string {
+  return 'r' + Math.random().toString(36).slice(2, 10)
+}
 
 parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
   parentWrite(c, async (account, family) => {
@@ -202,14 +366,24 @@ parentRoutes.post('/api/quote', async (c) => {
  *  what lets them be invisible, so they aren't listed as decisions. */
 function describe(txs: Array<{ to: string; data: string }>): string[] {
   const approve = erc20.getFunction('approve')!.selector
-  return txs.flatMap((tx) => {
+  const withdraw = poolIface.getFunction('withdraw')!.selector
+  const allowlist = managerIface.getFunction('setAllowlist')!.selector
+  const revoke = managerIface.getFunction('revoke')!.selector
+  const steps = txs.flatMap((tx) => {
     const to = tx.to.toLowerCase()
-    if (tx.data.slice(0, 10) === approve) return []
+    const sel = tx.data.slice(0, 10)
+    if (sel === approve) return []
     if (to === AAVE.FAUCET.toLowerCase()) return [`Get test ${AAVE.SYMBOL}`]
-    if (to === AAVE.POOL.toLowerCase()) return ['Move it into Aave']
-    if (to === MANAGER.toLowerCase()) return ['Set the limits on-chain']
+    if (to === AAVE.POOL.toLowerCase()) return sel === withdraw ? ['Take it out of Aave'] : ['Move it into Aave']
+    if (to === MANAGER.toLowerCase()) {
+      if (sel === allowlist) return ['Write the list on-chain']
+      if (sel === revoke) return ['Cancel the permission on-chain']
+      return ['Write the limit on-chain']
+    }
     return [`Call ${tx.to.slice(0, 10)}…`]
   })
+  // N scopes take the same edit; describing it N times says nothing extra.
+  return steps.filter((s, i) => s !== steps[i - 1])
 }
 
 /** The same batch the matching action would send, so a quote is never about a
@@ -238,6 +412,18 @@ async function buildForAction(family: Family, address: string, body: Record<stri
       const member = family.members.find((m) => m.id === body.memberId)
       if (!member?.scopeId) throw new Error('member has no allowance')
       return buildRevokeBatch(member.scopeId, outstandingCaps(family))
+    }
+    case 'pay': {
+      const plan = await planGuardianPay(address, String(body.to ?? ''), parseUnits(String(body.amount ?? '0')))
+      if (!plan.ok) throw new Error(plan.reason)
+      return plan.txs
+    }
+    case 'allowlist': {
+      const scopeIds = activeScopeIds(family)
+      if (scopeIds.length === 0) return null
+      // Quote the state being moved to, not the one being left.
+      const targets = family.recipients.map((r) => r.address)
+      return buildAllowlistBatch(scopeIds, targets, Boolean(body.only))
     }
     default:
       return null
@@ -291,6 +477,7 @@ parentRoutes.get('/api/state', async (c) => {
     pendingRequests: family.requests.filter((r) => r.status === 'pending').map((r) => ({
       ...r, memberName: family.members.find((m) => m.id === r.memberId)?.name ?? '?',
     })),
-    merchants: MERCHANTS,
+    recipients: family.recipients,
+    allowOnly: family.allowOnly,
   })
 })
