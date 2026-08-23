@@ -9,11 +9,12 @@ import { Confirm } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { AccountButton, AccountSheet } from '../components/Account'
 import { AmountStep, WhoStep } from '../components/Pay'
-import { labelFor, looksLikeAddress } from '../lib/address'
 import { Scan, scanningSupported } from '../components/Scan'
-import { Blob, Figure, Icon, ScreenSkeleton } from '../components/ui'
-import { base, fromBase, split, two } from '../lib/money'
-import { resetDay, when } from '../lib/time'
+import { Figure, Icon, ScreenSkeleton } from '../components/ui'
+import { fromBase, two } from '../lib/money'
+import { resetDay } from '../lib/time'
+import { spendState } from './member/spendState'
+import { MyActivity, MyWeek } from './member/Week'
 
 type TabId = 'home' | 'pay' | 'activity'
 
@@ -58,55 +59,8 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
     )
   }
 
-  // All of this arithmetic is in whole base units, the way the contract does
-  // it. Compared as floats, `period - spent` lands a hair under the figure
-  // shown for it about a sixth of the time — so typing exactly the number on
-  // screen read as being *over* the limit.
-  const value = base(amount || '0')
-  // `headroom` is what the contract would actually clear right now:
-  // min(week remaining, per-purchase cap, what the household can cover). The
-  // week remaining is the number a person thinks in, so the card shows that
-  // and the button obeys the headroom — and when they disagree, the hint says
-  // which constraint is biting.
-  const period = base(me.period)
-  const spent = base(me.spentThisPeriod)
-  const weekLeft = Math.max(0, period - spent)
-  const headroom = base(me.headroom)
-  const perTx = base(me.limit)
   const address = to.trim()
-  const valid = looksLikeAddress(address)
-  const name = labelFor(me.recipients, address)
-
-  const overPerTx = perTx > 0 && value > perTx
-  const overWeek = value > weekLeft
-  // Within their own limits, but the household position can't cover it. A
-  // guardian approving would not help — approveRequest still has to pull the
-  // funds — so this is not an "ask" case.
-  const shortAtHome = !overPerTx && !overWeek && value > headroom
-  // Their own list, not the household's. `known` only means the address has a
-  // name; being allowed to pay it is a separate question.
-  const canPay = (a: string) =>
-    !me.allowOnly || me.allowed.some((x) => x.toLowerCase() === a.trim().toLowerCase())
-  const offList = valid && !canPay(address)
-
-  // Anything the contract will not let them do on their own becomes a request
-  // rather than a refusal. The chain agrees: `requestSpend` does not check the
-  // allowlist, and neither does the guardian's `approveRequest`.
-  const over = value > 0 && (overPerTx || overWeek || offList)
-  const ready = valid && value > 0 && !shortAtHome
-
-  /** Why this needs saying. Never a refusal: the only thing that stops a
-   *  payment here is an address that isn't one. */
-  const problem = !address ? undefined
-    : !valid ? "That doesn't look like an address yet."
-    : offList ? 'Not one of your places, so this one needs a yes from home.'
-    : undefined
-
-  const hint = offList ? 'Outside your places, so this goes home to say yes to.'
-    : overPerTx ? `Over your ${two(me.limit)} limit, so this goes home to say yes to.`
-    : overWeek && value > 0 ? 'More than you have left this week. A parent can wave it through.'
-    : shortAtHome ? "There isn't enough at home to cover this right now."
-    : undefined
+  const { value, weekLeft, name, over, ready, problem, hint } = spendState(me, to, amount)
 
   /**
    * Pay, or ask. Same button, same gesture, and the wording is decided by the
@@ -337,114 +291,5 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       <Confirm pending={pending} onCancel={() => setPending(null)} />
       <OpModal op={op} onClose={() => setOp(null)} />
     </div>
-  )
-}
-
-/* ── their week ──────────────────────────────────────────────────────────── */
-
-/**
- * The week as a ring.
- *
- * A kid's question is never "what is my period cap", it's "how much is left" —
- * and a filling ring answers that at a glance in a way two numbers never do.
- */
-function MyWeek({ me, onAccount }: { me: MemberState; onAccount: () => void }) {
-  const period = Number(me.period ?? 0)
-  const spent = Number(me.spentThisPeriod)
-  const fraction = period > 0 ? Math.min(1, spent / period) : 0
-  const circumference = 2 * Math.PI * 96
-  const s = split(me.spentThisPeriod)
-
-  return (
-    <div className="page">
-      <div className="sec">
-        <div className="kicker">This week</div>
-        <AccountButton initial={me.name[0] ?? 'K'} onOpen={onAccount} />
-      </div>
-
-      <div className="ring">
-        <Blob size={44} left={16} top={26} rotate={-16} opacity={0.5} />
-        <Blob size={26} left={44} top={78} rotate={12} opacity={0.35} />
-        <Blob size={34} right={20} bottom={24} rotate={-24} opacity={0.42} />
-
-        <svg width="226" height="226" viewBox="0 0 226 226" role="img"
-             aria-label={`${two(me.spentThisPeriod)} of ${two(me.period)} ${me.symbol} spent`}>
-          <circle className="ring__track" cx="113" cy="113" r="96" />
-          <circle
-            className="ring__arc" cx="113" cy="113" r="96"
-            strokeDasharray={circumference}
-            strokeDashoffset={circumference * (1 - fraction)}
-          />
-        </svg>
-
-        <div className="ring__mid">
-          <div className="kicker" style={{ fontSize: 10, letterSpacing: '0.12em' }}>Spent</div>
-          <div className="figure figure--md" style={{ marginTop: 4 }}>
-            <span className="figure__big">{s.big}</span>
-            <span className="figure__cents">{s.cents}</span>
-          </div>
-          <div className="note mt1" style={{ fontSize: 11.5 }}>of {two(me.period)} {me.symbol}</div>
-        </div>
-      </div>
-
-      <div className="pair mt3">
-        <div className="tile" style={{ padding: '14px 16px' }}>
-          <div className="tile__label" style={{ fontSize: 10 }}>Left</div>
-          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>
-            {two(fromBase(Math.max(0, base(me.period) - base(me.spentThisPeriod))))}
-          </div>
-        </div>
-        <div className="tile" style={{ padding: '14px 16px' }}>
-          <div className="tile__label" style={{ fontSize: 10 }}>Starts again</div>
-          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>{resetDay(me.resetsAt)}</div>
-        </div>
-      </div>
-
-      {me.activity.length > 0 ? (
-        <div style={{ marginTop: 22 }}>
-          <div className="kicker kicker--muted" style={{ padding: '0 8px 6px' }}>Yours</div>
-          <MyActivity items={me.activity} />
-        </div>
-      ) : (
-        <p className="empty mt5">Nothing spent yet. What you pay for shows up here.</p>
-      )}
-    </div>
-  )
-}
-
-/**
- * A member's own history: what they paid for, and what is still waiting on
- * someone at home. Never anyone else's.
- */
-function MyActivity({ items }: { items: MemberState['activity'] }) {
-  return (
-    <>
-      {items.map((a) => {
-        const waiting = a.kind === 'ask'
-        return (
-          <div
-            key={a.id}
-            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderTop: '1px solid var(--line)' }}
-          >
-            <span
-              className="avatar avatar--sm"
-              style={{
-                background: 'var(--fill-2)', borderColor: 'transparent',
-                color: waiting ? 'var(--accent)' : 'var(--muted)',
-              }}
-            >
-              <Icon name={waiting ? 'activity' : 'shop'} size={16} />
-            </span>
-            <span className="row__body">
-              <span style={{ display: 'block', fontSize: 13.5, lineHeight: 1.4 }}>{a.text}</span>
-              <span style={{ display: 'block', fontSize: 11, marginTop: 2, color: 'var(--faint)' }}>
-                {when(a.at)}
-              </span>
-            </span>
-            {waiting && <span className="tag tag--waiting">waiting</span>}
-          </div>
-        )
-      })}
-    </>
   )
 }

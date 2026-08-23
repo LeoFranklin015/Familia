@@ -78,9 +78,6 @@ export type ParentState = {
   wallet: {
     address: string
     pot: string
-    /** USD₮ sitting in the account, outside Aave: what deposits are funded
-     *  from and what network fees are charged against. */
-    loose: string
     /** How much of `loose` may actually be supplied — the rest is the fee
      *  headroom this account keeps to pay its own way. */
     addable: string
@@ -89,7 +86,6 @@ export type ParentState = {
     /** When `pot` was read, so the interface can carry it forward. */
     potAt: number
     feeMode: 'usdt' | 'sponsored'
-    paymaster: string | null
     /** Onboarding funding: happens once, in the background, at sign-up. */
     setup: { status: 'idle' | 'running' | 'done' | 'failed'; txHash?: string; reason?: string }
   }
@@ -130,12 +126,8 @@ export type FeeQuote = {
   /** USD₮, or null if the paymaster refused to quote. */
   fee: string | null
   symbol: string
-  paidIn?: string
   /** Why this action can't proceed at all — not a quoting failure. */
   blocked?: string
-  /** Every on-chain call this single operation will make, in order. */
-  steps?: string[]
-  error?: string
 }
 
 /**

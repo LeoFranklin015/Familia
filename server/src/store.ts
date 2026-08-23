@@ -41,7 +41,6 @@ export type Member = {
   credentialId: string
   scopeId?: string
   caps?: { perTx: string; period: string; periodLength: number; expiry: number }
-  grantTx?: string
   revoked?: boolean
   joinedAt: number
   /**
@@ -109,7 +108,6 @@ export type Family = {
   invites: Array<{ token: string; name: string; usedBy?: string; createdAt: number }>
   members: Member[]
   requests: SpendRequest[]
-  deposits: Array<{ amount: string; txHash: string; at: number }>
   activity: Activity[]
   /**
    * The household's address book: names against addresses, shared so nobody
@@ -148,7 +146,6 @@ export function normalize(f: Family): Family {
   f.invites ??= []
   f.members ??= []
   f.requests ??= []
-  f.deposits ??= []
   f.activity ??= []
   f.recipients ??= STARTER_RECIPIENTS.map((r) => ({ ...r }))
 
@@ -210,7 +207,6 @@ export async function createFamily(
     invites: [{ token, name: parentName, createdAt: Date.now() }],
     members: [],
     requests: [],
-    deposits: [],
     activity: [],
     recipients: STARTER_RECIPIENTS.map((r) => ({ ...r })),
     allowOnly: false,

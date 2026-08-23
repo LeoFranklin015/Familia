@@ -1,7 +1,7 @@
 // Everything the guardian's app renders from.
 import { Hono } from 'hono'
 import {
-  AAVE, aAssetRead, assetRead, canPayFeesInUsdt, depositableAmount, formatUnits,
+  AAVE, aAssetRead, canPayFeesInUsdt, depositableAmount, formatUnits,
   managerRead, spentInCurrentPeriod, supplyApr,
 } from '../../chain.js'
 import { bootstrapStatus } from '../../bootstrap.js'
@@ -18,9 +18,8 @@ stateRoutes.get('/api/state', async (c) => {
 
   // One wave. The member scope reads do not depend on any wallet value, and
   // running them after it cost a whole round trip on every ten-second poll.
-  const [pool, loose, addable, paysInUsdt, apr, members] = await Promise.all([
+  const [pool, addable, paysInUsdt, apr, members] = await Promise.all([
     aAssetRead.balanceOf(session.address) as Promise<bigint>,
-    assetRead.balanceOf(session.address) as Promise<bigint>,
     depositableAmount(session.address),
     canPayFeesInUsdt(session.address),
     supplyApr(),
@@ -34,7 +33,6 @@ stateRoutes.get('/api/state', async (c) => {
     wallet: {
       address: session.address,
       pot: formatUnits(pool),
-      loose: formatUnits(loose),
       // What "Add money" may offer: the loose balance minus the fee headroom
       // this account needs to keep paying its own way.
       addable: formatUnits(addable),

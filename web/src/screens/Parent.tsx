@@ -6,14 +6,14 @@ import { useApproval } from '../useApproval'
 import { PassphraseSheet } from '../components/PassphraseSheet'
 import { TabBar, type Tab } from '../components/TabBar'
 import { Sheet } from '../components/Sheet'
-import { AccountButton, AccountSheet } from '../components/Account'
+import { AccountSheet } from '../components/Account'
 import { Confirm } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
-import { InfoButton, LiveFigure, ScreenSkeleton } from '../components/ui'
-import { figureSize, floor2, two } from '../lib/money'
-import { shortAddress } from '../lib/address'
-import { Keypad } from '../components/Pay'
+import { ScreenSkeleton } from '../components/ui'
+import { two } from '../lib/money'
 import { Activity } from './Activity'
+import { Home } from './parent/Home'
+import { AddMoneySheet } from './parent/AddMoneySheet'
 import { PayTab } from './ParentPay'
 import { FamilyTab } from './ParentFamily'
 
@@ -115,14 +115,14 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     const symbol = st.symbol
 
     // The quote settles the price. It does *not* get to rewrite the steps:
-    // `describe()` names the calls in the batch, which is implementation
-    // detail, while the caller's list says what happens in the person's own
-    // terms. Approving a child's ask is one `approveRequest` call, so the
-    // quote calls it "Let the payment through" — but what actually happens is
-    // money coming out of Aave and reaching the shop, which is what the
-    // caller wrote and what the person should read. Quote steps are a
-    // fallback for callers that give none.
-    const plan = { steps: spec.steps, covered: false, quote: null as string | null }
+    // The quote settles the price and nothing else. What the operation *does*
+    // is named by the caller, in the person's own terms: approving a child's
+    // ask is one `approveRequest` call, so the server would call it "let the
+    // payment through", while what actually happens is money leaving Aave and
+    // reaching the shop.
+    //
+    // Filled in by the quote below, and read when the person commits.
+    const priced = { covered: false, ceiling: null as string | null }
 
     const run = async (approval: Approval) => {
       // One UserOperation. Every call in the batch lands together on
@@ -131,12 +131,12 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       // exist.
       setPending(null)
       setOp({
-        title: spec.title, steps: plan.steps, done: 0, status: 'running',
-        symbol, covered: plan.covered,
+        title: spec.title, steps: spec.steps, done: 0, status: 'running',
+        symbol, covered: priced.covered,
         // The same ceiling the confirmation sheet showed. Without it the
-        // modal's "fee, at most" row sat empty for the whole twenty seconds,
-        // having just been quoted a number on the previous screen.
-        quote: plan.quote,
+        // modal's fee row sat empty for the whole twenty seconds, having just
+        // quoted a number on the previous screen.
+        quote: priced.ceiling,
       })
       try {
         const res = await spec.call(approval)
@@ -161,11 +161,10 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     if (!spec.quote) { setPending((p) => p && { ...p, feeUnknown: true }); return }
     api.post<FeeQuote>('/api/quote', spec.quote)
       .then((q) => {
-        if (q.steps?.length && spec.steps.length === 0) plan.steps = q.steps
-        plan.covered = q.feeMode === 'sponsored'
-        plan.quote = q.fee ?? null
+        priced.covered = q.feeMode === 'sponsored'
+        priced.ceiling = q.fee ?? null
         setPending((p) => p && {
-          ...p, fee: q.fee ?? null, covered: plan.covered, blocked: q.blocked,
+          ...p, fee: q.fee ?? null, covered: priced.covered, blocked: q.blocked,
         })
       })
       // A quote that won't come is not a blocker — the operation can still be
@@ -277,174 +276,5 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
         onClose={() => setOp(null)}
       />
     </div>
-  )
-}
-
-/**
- * Aave's rate, said the way a rate is said.
- *
- * Compounded per second, because that is what a supplier actually receives —
- * though at testnet rates the difference from the simple figure is invisible.
- */
-function apyText(apr: number): string {
-  if (apr <= 0) return 'nothing yet'
-  const apy = (1 + apr / 31_536_000) ** 31_536_000 - 1
-  return `${(apy * 100).toFixed(apy < 0.001 ? 4 : 2)}% a year`
-}
-/* ── Home ────────────────────────────────────────────────────────────────── */
-
-function Home({
-  st, onInfo, onFees, onSeeAll, onCopied, onAdd,
-}: {
-  st: ParentState
-  onInfo: (n: Note) => void
-  onFees: () => void
-  onSeeAll: () => void
-  onCopied: (m: string) => void
-  onAdd: () => void
-}) {
-
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(st.wallet.address)
-      onCopied('Address copied')
-    } catch { onCopied("Couldn't copy") }
-  }
-
-  return (
-    <div className="page">
-      <div className="sec">
-        <div className="kicker">{st.familyName} household</div>
-        <AccountButton initial={st.you?.name?.[0] ?? 'K'} onOpen={onFees} />
-      </div>
-
-      <div className="balance">
-        <div className="sec" style={{ padding: 0 }}>
-          <div className="kicker">Balance</div>
-          <InfoButton label="Where the money sits" onClick={() => onInfo('balance')} />
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <LiveFigure
-            balance={st.wallet.pot}
-            apr={st.wallet.apr ?? 0}
-            readAt={st.wallet.potAt ?? Date.now()}
-          />
-        </div>
-        <div className="note mt3">
-          {(st.wallet.apr ?? 0) > 0 && <span className="livedot" aria-hidden="true" />}
-          {st.symbol} · earning {apyText(st.wallet.apr ?? 0)} in Aave
-        </div>
-        <button className="chip tap mt4" onClick={copy} aria-label="Copy your account address">
-          <span className="chip__addr">{shortAddress(st.wallet.address)}</span>
-          <span className="chip__do">copy</span>
-        </button>
-      </div>
-
-      <div className="pair mt2">
-        <div className="tile">
-          <div className="tile__label">Promised out</div>
-          <div className="tile__figure">{two(st.promised)}</div>
-          <div className="tile__note">in weekly limits</div>
-        </div>
-        <div className="tile tile--pale">
-          <div className="tile__label">Ready to add</div>
-          <div className="tile__figure">{two(st.wallet.addable)}</div>
-          {Number(st.wallet.addable) > 0 ? (
-            <button
-              className="btn btn--sm tap mt3"
-              style={{ background: 'var(--ink)', color: 'var(--pale)', minHeight: 44, fontSize: 13.5 }}
-              onClick={onAdd}
-            >
-              Add money
-            </button>
-          ) : (
-            <div className="tile__note">The faucet tops you up once a day</div>
-          )}
-        </div>
-      </div>
-
-      <div className="sec sec--top">
-        <div className="kicker kicker--muted">Recent</div>
-        {st.activity.length > 0 && (
-          <button className="link tap" style={{ fontSize: 12.5 }} onClick={onSeeAll}>All of it</button>
-        )}
-      </div>
-
-      {st.activity.length > 0
-        ? <Activity items={st.activity.slice(0, 3)} />
-        : (
-          <p className="empty empty--bare">
-            Money you add, limits you set and payments the family makes all show up here.
-          </p>
-        )}
-    </div>
-  )
-}
-
-/* ── adding money ────────────────────────────────────────────────────────── */
-
-/**
- * How much to move into Aave.
- *
- * It used to take the whole spare balance without asking, which is a strange
- * thing for a wallet to do — so it asks, with the ceiling one tap away for
- * the common case of moving all of it.
- *
- * The ceiling is not the loose balance: the account keeps a few operations'
- * worth of USDT back, because it pays its own network fees in USDT and an
- * account that supplies every last token cannot afford its next transaction.
- */
-function AddMoneySheet({
-  max, symbol, onClose, onAdd,
-}: {
-  max: string
-  symbol: string
-  onClose: () => void
-  onAdd: (amount: string) => void
-}) {
-  const [amount, setAmount] = useState('')
-  const value = Number(amount || '0')
-  const ceiling = Number(max)
-  const over = value > ceiling
-  const ok = value > 0 && !over
-
-  const close = () => { setAmount(''); onClose() }
-
-  return (
-    <Sheet open title="Add money" onClose={close}>
-      <div
-        className={`amount-screen__big${amount === '' ? ' amount-screen__big--empty' : over ? ' amount-screen__big--over' : ''}`}
-        style={{ justifyContent: 'center', margin: '4px 0 8px' }}
-        role="status"
-        aria-live="polite"
-        aria-label={`${amount || '0'} ${symbol}`}
-      >
-        <span className="amount-screen__unit">{symbol}</span>
-        <span className="amount-screen__value" style={{ fontSize: figureSize(amount || '0') }}>
-          {amount === '' ? '0' : amount}
-        </span>
-      </div>
-
-      <p className="amount-screen__under">
-        {over
-          ? `Only ${floor2(max)} can be moved. The rest covers network fees.`
-          : `${floor2(max)} ${symbol} ready · earns in Aave straight away`}
-      </p>
-
-      {ceiling > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-          <button className="maxchip tap" onClick={() => setAmount(floor2(max))}>Use the lot</button>
-        </div>
-      )}
-
-      <div className="mt3">
-        <Keypad value={amount} onChange={setAmount} />
-      </div>
-
-      <button className="btn tap mt4" disabled={!ok} onClick={() => onAdd(amount)}>
-        {value <= 0 ? 'Enter an amount' : over ? 'Too much' : `Add ${two(amount)}`}
-      </button>
-    </Sheet>
   )
 }
