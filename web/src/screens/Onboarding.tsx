@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { knownCredentialId, rememberCredentialId } from '../auth'
-import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
+import { createPasskey, unlockPasskey } from '../webauthn'
+import { KeyChoice } from '../components/KeyChoice'
 import { Blob, Icon } from '../components/ui'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
@@ -187,44 +188,22 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               payment asks again.
             </p>
 
-            {!usePassphrase ? (
-              <>
-                <div className="markbox markbox--accent mt5">
-                  <Icon name="face" size={46} />
-                </div>
-                <div className="spacer" />
-                {!webauthnAvailable() && (
-                  <p className="hint" style={{ marginBottom: 10 }}>
-                    This browser has no Face ID. Use a passphrase instead.
-                  </p>
-                )}
-                <button className="btn tap" onClick={createWithFaceId} disabled={busy}>
-                  {busy ? <><span className="spin" />Setting up…</> : 'Use Face ID'}
-                </button>
-                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(true)}>
-                  Use a passphrase instead
-                </button>
-              </>
-            ) : (
-              <>
-                <label className="field mt5">
-                  <span>Choose a passphrase</span>
-                  <input
-                    className="input" type="password" placeholder="At least 8 characters"
-                    value={passphrase} autoFocus onChange={(e) => setPassphrase(e.target.value)}
-                  />
-                </label>
-                <div className="spacer" />
-                <button className="btn tap" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
-                  {busy ? <><span className="spin" />Setting up…</> : 'Create my account'}
-                </button>
-                {webauthnAvailable() && (
-                  <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(false)}>
-                    Use Face ID instead
-                  </button>
-                )}
-              </>
-            )}
+            <div className="markbox markbox--accent mt5">
+              <Icon name="face" size={46} />
+            </div>
+            <div className="spacer" />
+            <KeyChoice
+              mode={usePassphrase ? 'passphrase' : 'faceId'}
+              onMode={(m) => setUsePassphrase(m === 'passphrase')}
+              passphrase={passphrase}
+              onPassphrase={setPassphrase}
+              busy={busy}
+              faceId="Use Face ID"
+              confirm="Create my account"
+              working="Setting up…"
+              onFaceId={createWithFaceId}
+              onSubmit={createWithPassphrase}
+            />
           </>
         )}
 
@@ -236,32 +215,18 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
             <p className="lede">Same face, same account.</p>
             <div className="spacer" />
 
-            {!usePassphrase ? (
-              <>
-                <button className="btn tap" onClick={signInFaceId} disabled={busy}>
-                  {busy ? <><span className="spin" />Opening…</> : 'Sign in with Face ID'}
-                </button>
-                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(true)}>
-                  Use my passphrase
-                </button>
-              </>
-            ) : (
-              <>
-                <label className="field" style={{ marginBottom: 18 }}>
-                  <span>Your passphrase</span>
-                  <input
-                    className="input" type="password" value={passphrase} autoFocus
-                    onChange={(e) => setPassphrase(e.target.value)}
-                  />
-                </label>
-                <button className="btn tap" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
-                  {busy ? <><span className="spin" />Opening…</> : 'Sign in'}
-                </button>
-                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(false)}>
-                  Use Face ID
-                </button>
-              </>
-            )}
+            <KeyChoice
+              mode={usePassphrase ? 'passphrase' : 'faceId'}
+              onMode={(m) => setUsePassphrase(m === 'passphrase')}
+              passphrase={passphrase}
+              onPassphrase={setPassphrase}
+              busy={busy}
+              faceId="Sign in with Face ID"
+              confirm="Sign in"
+              working="Opening…"
+              onFaceId={signInFaceId}
+              onSubmit={signInPassphrase}
+            />
             <button className="link tap mt2" style={{ alignSelf: 'center' }} onClick={() => go('welcome')}>Back</button>
           </>
         )}

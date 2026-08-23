@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { rememberCredentialId } from '../auth'
-import { createPasskey, webauthnAvailable } from '../webauthn'
+import { createPasskey } from '../webauthn'
+import { KeyChoice } from '../components/KeyChoice'
 import { Blob, Icon, Skeleton } from '../components/ui'
 
 type Invite = { familyName: string; inviteeName: string; isParent: boolean }
@@ -114,39 +115,18 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
 
         <div className="spacer" />
 
-        {!usePassphrase ? (
-          <>
-            {!webauthnAvailable() && (
-              <p className="hint" style={{ marginBottom: 10 }}>
-                This browser has no Face ID. Use a passphrase instead.
-              </p>
-            )}
-            <button className="btn tap" onClick={withFaceId} disabled={busy}>
-              {busy ? <><span className="spin" />Setting you up…</> : 'Use Face ID'}
-            </button>
-            <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(true)}>
-              Use a passphrase instead
-            </button>
-          </>
-        ) : (
-          <>
-            <label className="field" style={{ marginBottom: 18 }}>
-              <span>Choose a passphrase</span>
-              <input
-                className="input" type="password" placeholder="At least 8 characters"
-                value={passphrase} autoFocus onChange={(e) => setPassphrase(e.target.value)}
-              />
-            </label>
-            <button className="btn tap" onClick={withPassphrase} disabled={busy || passphrase.length < 8}>
-              {busy ? <><span className="spin" />Setting you up…</> : "I'm ready"}
-            </button>
-            {webauthnAvailable() && (
-              <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(false)}>
-                Use Face ID instead
-              </button>
-            )}
-          </>
-        )}
+        <KeyChoice
+          mode={usePassphrase ? 'passphrase' : 'faceId'}
+          onMode={(m) => setUsePassphrase(m === 'passphrase')}
+          passphrase={passphrase}
+          onPassphrase={setPassphrase}
+          busy={busy}
+          faceId="Use Face ID"
+          confirm="I'm ready"
+          working="Setting you up…"
+          onFaceId={withFaceId}
+          onSubmit={withPassphrase}
+        />
 
         {err && <p className="warn mt3" role="alert">{err}</p>}
       </div>
