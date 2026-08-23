@@ -6,13 +6,29 @@ import { joinRoutes } from './routes/join.js'
 import { parentRoutes } from './routes/parent.js'
 import { memberRoutes } from './routes/member.js'
 import { paymasterService } from './paymaster-service.js'
-import { openStore } from './store.js'
+import { Contended, openStore } from './store.js'
+import { AuthError } from './authorize.js'
 
 mkdirSync(new URL('../data', import.meta.url).pathname, { recursive: true })
 
 const app = new Hono()
 
+/**
+ * One place where a thrown thing becomes a response.
+ *
+ * Routes used to catch `AuthError` individually and translate it, which meant
+ * remembering to. The two errors that carry words meant for a person are
+ * translated here; anything else is a bug and says so.
+ */
 app.onError((err, c) => {
+  if (err instanceof AuthError) {
+    return c.json({
+      error: err.message,
+      needsAuth: err.status === 401,
+      sessionEnded: err.status === 401,
+    }, err.status)
+  }
+  if (err instanceof Contended) return c.json({ error: err.message }, 409)
   console.error(err)
   return c.json({ error: err.message ?? 'unexpected error' }, 500)
 })

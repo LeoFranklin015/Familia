@@ -50,26 +50,46 @@ export function useAccruing(
 ): string {
   const [now, setNow] = useState(() => Date.now())
 
-  // Anchor and rate change on every poll; keeping them in a ref means the
-  // ticking effect below is set up once rather than torn down ten times a
-  // minute.
-  const anchor = useRef({ balance, apr, readAt })
-  anchor.current = { balance, apr, readAt }
+  // Where the count is running from. Deliberately *not* reset on every poll:
+  // the chain's six decimals only move every quarter of an hour at these
+  // rates, so re-anchoring to each read sent the accrued digits back to zero
+  // ten times a minute — a sawtooth, not a counter.
+  const anchor = useRef({ base: balance, at: readAt })
+  const lastRead = useRef(balance)
+  const rate = useRef(apr)
+  rate.current = apr
+
+  // A new reading is a correction, not a restart.
+  if (balance !== lastRead.current) {
+    lastRead.current = balance
+    const at = Date.now()
+    const projected = project(anchor.current.base, apr, anchor.current.at, at)
+    const fell = Number(balance) < Number(anchor.current.base)
+    const chainAhead = Number(balance) > Number(projected)
+
+    anchor.current = fell || chainAhead
+      // Money left the position, or the chain has passed our projection:
+      // either way the chain is right and the figure should say so.
+      ? { base: balance, at: readAt }
+      // The usual case. The chain has not caught up with what we are showing
+      // yet, so carry on from where we are rather than stepping backwards.
+      : { base: projected, at }
+  }
 
   const live = apr > 0 && Number(balance) > 0
 
   useEffect(() => {
     if (!live) return
-    // Five times a second. The last digit only changes about once a second,
-    // so this is comfortably enough to catch it promptly without a timer
-    // running at animation speed for the life of the screen.
+    // Five times a second. The last digit changes about once a second, so this
+    // catches it promptly without running a timer at animation speed for the
+    // life of the screen.
     const t = setInterval(() => setNow(Date.now()), 200)
     return () => clearInterval(t)
   }, [live])
 
   if (!live) return balance
 
-  return project(anchor.current.balance, anchor.current.apr, anchor.current.readAt, now)
+  return project(anchor.current.base, rate.current, anchor.current.at, now)
 }
 
 /**

@@ -2,7 +2,6 @@
 // session, disposed on expiry so keys never outlive their session.
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless, { WalletAccountReadOnlyEvm7702Gasless } from '@tetherto/wdk-wallet-evm-7702-gasless'
-import { randomBytes } from 'node:crypto'
 import {
   AAVE, BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, PAYMASTER_SERVICE_URL, POLICY_ID, RPC_URL, USDT_PAYMASTER,
 } from './chain.js'

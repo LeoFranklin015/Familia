@@ -3,39 +3,25 @@
 // Reads come from the session. The payment itself needs the member's own key,
 // presented at the moment they press pay — the same confirmation a phone asks
 // for before any other payment.
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
 import { ethers } from 'ethers'
 import {
   AAVE, eventArgFromLogs, formatUnits, humanizeManagerRevert,
   managerIface, managerRead, MANAGER, parseUnits, spentInCurrentPeriod,
 } from '../chain.js'
-import { mustFamily, record, updateFamily, type Family } from '../store.js'
+import { record, updateFamily, type Member } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
-import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
+import { bodyOf } from '../authorize.js'
+import { memberOf, memberWrite, refuseMember } from './guard.js'
 import { payeeName } from '../lib/names.js'
 
 export const memberRoutes = new Hono()
 
 const REQUEST_TTL_S = 24 * 3600
 
-/** Same as the parent side: a stale cookie is not a role error. */
-async function refuse(c: Context<any, any, any>) {
-  return (await currentSession(c))
-    ? c.json({ error: 'This account cannot spend from that household.' }, 403)
-    : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
-}
-
-async function memberOf(c: Context<any, any, any>) {
-  const s = await currentSession(c)
-  if (s?.role !== 'member' || !s.memberId) return null
-  const family = await mustFamily(s.familyId)
-  const member = family.members.find((m) => m.id === s.memberId)
-  return member ? { s, family, member } : null
-}
-
 memberRoutes.get('/api/me', async (c) => {
   const ctx = await memberOf(c)
-  if (!ctx) return refuse(c)
+  if (!ctx) return refuseMember(c)
   const { family, member } = ctx
 
   let spendable = '0', resetsAt = 0, spent = '0'
@@ -77,95 +63,115 @@ memberRoutes.get('/api/me', async (c) => {
   })
 })
 
-memberRoutes.post('/api/spend', async (c) => {
-  const ctx = await memberOf(c)
-  if (!ctx) return refuse(c)
-  const { family, member } = ctx
-  if (!member.scopeId) return c.json({ error: 'You have no spending allowance yet. Ask a parent.' }, 409)
+/**
+ * Pay, or ask.
+ *
+ * One route, because from the member's side it is one gesture. Which of the
+ * two it becomes is the contract's rule, not a preference: `spend` enforces
+ * the caps and the allowlist and reverts, while `requestSpend` enforces
+ * neither — and neither does the guardian's `approveRequest`. That asymmetry
+ * is the contract saying a list bounds what a *spender* may do unilaterally
+ * while the funder can always override, which is exactly "ask someone at
+ * home".
+ */
+memberRoutes.post('/api/spend', (c) =>
+  memberWrite(c, async (account, family, member) => {
+    if (!member.scopeId) {
+      return c.json({ error: 'You have no spending allowance yet. Ask a parent.' }, 409)
+    }
 
-  // `force` skips this app's own pre-checks so the on-chain enforcement is
-  // demonstrable: the manager reverts at simulation, and we decode it.
-  const { to, amount, force = false } = await bodyOf<{ to: string; amount: string; force?: boolean }>(c)
-  if (!ethers.isAddress(to)) return c.json({ error: 'Pick a real recipient.' }, 400)
-  const value = parseUnits(String(amount))
-  if (value <= 0n) return c.json({ error: 'Enter an amount above zero.' }, 400)
+    // `force` skips this app's own pre-checks so the on-chain enforcement is
+    // demonstrable: the manager reverts at simulation, and we decode it.
+    const { to, amount, force = false } =
+      await bodyOf<{ to: string; amount: string; force?: boolean }>(c)
+    if (!ethers.isAddress(to)) return c.json({ error: 'Pick a real recipient.' }, 400)
 
-  const scope = await managerRead.getScope(member.scopeId)
-  if (scope.revoked && !force) return c.json({ error: 'Your spending was turned off by a parent.' }, 409)
-  const spendableNow = force ? value : ((await managerRead.spendable(member.scopeId)) as bigint)
+    const value = parseUnits(String(amount))
+    if (value <= 0n) return c.json({ error: 'Enter an amount above zero.' }, 400)
 
-  /**
-   * Somewhere this member may not pay on their own.
-   *
-   * `spend` checks the allowlist and reverts; `requestSpend` does not, and
-   * neither does `approveRequest`. That asymmetry is the contract saying the
-   * list bounds what a *spender* may do unilaterally, while the funder can
-   * always override — so an address off the list is a reason to ask, not a
-   * dead end. It has to be decided here rather than by amount alone, or an
-   * off-list payment within the caps would take the `spend` path and revert.
-   */
-  const offList = Boolean(member.allowOnly)
-    && !(member.allowed ?? []).some((a) => a.toLowerCase() === to.toLowerCase())
+    const scope = await managerRead.getScope(member.scopeId)
+    if (scope.revoked && !force) {
+      return c.json({ error: 'Your spending was turned off by a parent.' }, 409)
+    }
 
-  try {
-    return await actAs(c, { role: 'member' }, async (account) => {
-      if (value <= spendableNow && !offList) {
-        // Within limits: the member's own account calls spend(), and the money
-        // leaves the parent's Aave position for the merchant in that one
-        // transaction. Members are sponsored — a child should never need a
-        // token balance to spend an allowance.
-        try {
-          const { hash } = await account.sendTransaction({
-            to: MANAGER, value: 0n,
-            data: managerIface.encodeFunctionData('spend', [member.scopeId, to, value]),
-          })
-          const result = await waitForUserOp(account, hash)
-          if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
-          await record(family.id, {
-            kind: 'payment', text: `${member.name} paid ${amount} to ${payeeName(family, to)}`,
-            amount: String(amount), memberId: member.id, txHash: result.txHash,
-          })
-          return c.json({ kind: 'spent', txHash: result.txHash, userOpHash: hash })
-        } catch (err) {
-          const human = humanizeManagerRevert(err)
-          if (human) return c.json({ error: human, onchainRevert: true }, 409)
-          throw err
-        }
-      }
+    const spendable = force ? value : ((await managerRead.spendable(member.scopeId)) as bigint)
+    // Decided here rather than by amount alone: an off-list payment that is
+    // within the caps would otherwise take the `spend` path and revert.
+    const outside = isOffList(member, to)
+    const name = payeeName(family, to)
 
-      // Over the cap, or outside their places: either way this does not fail,
-      // it becomes an on-chain request for someone at home to settle.
-      const { hash } = await account.sendTransaction({
-        to: MANAGER, value: 0n,
-        data: managerIface.encodeFunctionData('requestSpend', [member.scopeId, to, value, REQUEST_TTL_S]),
-      })
-      const result = await waitForUserOp(account, hash)
-      if (!result.success) return c.json({ error: 'Could not send the ask. Try again.' }, 502)
-      const requestId = eventArgFromLogs(result.logs, 'SpendRequested', 'requestId')
-      if (!requestId) return c.json({ error: 'SpendRequested event missing from receipt' }, 500)
-
-      // Atomic: a guardian may well be mid-grant on the other phone, and a
-      // whole-document overwrite here would erase whatever they just wrote.
-      await updateFamily(family.id, (f) => {
-        f.requests.push({
-          requestId, memberId: member.id, to, toName: payeeName(family, to),
-          amount: String(amount), status: 'pending', createdAt: Date.now(), txHash: result.txHash,
-          // So the guardian is told they would be overriding a restriction,
-          // not just approving a large amount.
-          offList,
+    if (value <= spendable && !outside) {
+      // The member's own account calls `spend`, and the money leaves the
+      // guardian's Aave position for the shop in that one transaction.
+      try {
+        const { hash } = await account.sendTransaction({
+          to: MANAGER,
+          value: 0n,
+          data: managerIface.encodeFunctionData('spend', [member.scopeId, to, value]),
         })
-      })
-      await record(family.id, {
-        kind: 'ask',
-        text: offList
-          ? `${member.name} asked to pay ${amount} to ${payeeName(family, to)}, outside their places`
-          : `${member.name} asked to pay ${amount} to ${payeeName(family, to)}`,
-        amount: String(amount), memberId: member.id, txHash: result.txHash,
-      })
-      return c.json({ kind: 'asked', requestId, txHash: result.txHash })
+        const result = await waitForUserOp(account, hash)
+        if (!result.success) {
+          return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
+        }
+        await record(family.id, {
+          kind: 'payment',
+          text: `${member.name} paid ${amount} to ${name}`,
+          amount: String(amount),
+          memberId: member.id,
+          txHash: result.txHash,
+        })
+        return c.json({ kind: 'spent', txHash: result.txHash })
+      } catch (err) {
+        // The manager's own named errors, in words. This is the path that
+        // shows the limits belong to the contract rather than to the app.
+        const human = humanizeManagerRevert(err)
+        if (human) return c.json({ error: human }, 409)
+        throw err
+      }
+    }
+
+    const { hash } = await account.sendTransaction({
+      to: MANAGER,
+      value: 0n,
+      data: managerIface.encodeFunctionData('requestSpend', [member.scopeId, to, value, REQUEST_TTL_S]),
     })
-  } catch (e) {
-    if (e instanceof AuthError) return c.json({ error: e.message, needsAuth: e.status === 401 }, e.status)
-    throw e
-  }
-})
+    const result = await waitForUserOp(account, hash)
+    if (!result.success) return c.json({ error: 'Could not send the ask. Try again.' }, 502)
+
+    const requestId = eventArgFromLogs(result.logs, 'SpendRequested', 'requestId')
+    if (!requestId) return c.json({ error: 'SpendRequested event missing from receipt' }, 500)
+
+    // Atomic: a guardian may well be mid-grant on the other phone, and a
+    // whole-document overwrite here would erase whatever they just wrote.
+    await updateFamily(family.id, (f) => {
+      f.requests.push({
+        requestId,
+        memberId: member.id,
+        to,
+        toName: name,
+        amount: String(amount),
+        status: 'pending',
+        createdAt: Date.now(),
+        txHash: result.txHash,
+        // So the guardian is told they would be overriding a restriction,
+        // not merely approving a large amount.
+        offList: outside,
+      })
+    })
+    await record(family.id, {
+      kind: 'ask',
+      text: outside
+        ? `${member.name} asked to pay ${amount} to ${name}, outside their places`
+        : `${member.name} asked to pay ${amount} to ${name}`,
+      amount: String(amount),
+      memberId: member.id,
+      txHash: result.txHash,
+    })
+    return c.json({ kind: 'asked', requestId, txHash: result.txHash })
+  }))
+
+/** Somewhere this member may not pay on their own. */
+function isOffList(member: Member, to: string): boolean {
+  return Boolean(member.allowOnly)
+    && !(member.allowed ?? []).some((a) => a.toLowerCase() === to.toLowerCase())
+}

@@ -69,6 +69,21 @@ export async function actAs<T>(
   return withAccount(mnemonic, { memberGuard: vault.role === 'member', payFeesInUsdt: opts.payFeesInUsdt }, (a) => fn(a, vault))
 }
 
+/**
+ * Say no, in words that point somewhere.
+ *
+ * "parent only" is true and useless: the overwhelmingly common cause is a
+ * session that has ended, and being told the wrong role when the real problem
+ * is a stale cookie sends you looking in the wrong place. The `sessionEnded`
+ * flag also lets the interface act — return to sign-in rather than report the
+ * payment someone was halfway through as refused.
+ */
+export async function refuse(c: Context<any, any, any>, wrongAccount: string) {
+  return (await currentSession(c))
+    ? c.json({ error: wrongAccount }, 403)
+    : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
+}
+
 /** Read the request body once, minus the auth blob. */
 export async function bodyOf<T = Record<string, unknown>>(c: Context<any, any, any>): Promise<T> {
   const { auth: _auth, ...rest } = (await c.req.json().catch(() => ({}))) as Record<string, unknown>

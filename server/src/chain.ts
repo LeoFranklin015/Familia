@@ -68,20 +68,37 @@ const TYPICAL_OP_GAS = 700_000n // a batched grant/deposit, generously rounded
 const OPS_OF_HEADROOM = 250n
 const MIN_FEE_BUFFER = 1_000000n // 1 USD₮ — never approve a dust allowance
 
-/** USD₮ cost of one representative operation at current gas prices. */
-export async function feePerOperation(): Promise<bigint> {
-  if (!USDT_PAYMASTER) return 0n
-  const [fees, pm] = [await provider.getFeeData(), new ethers.Contract(USDT_PAYMASTER, [
-    'function quote(uint256) view returns (uint256)',
-  ], provider)]
+/**
+ * USD₮ cost of one representative operation at current gas prices.
+ *
+ * Memoised for a few seconds. It is two sequential RPC waves — a fee-data read,
+ * then a `quote` against the paymaster — and one "Add money" tap used to run it
+ * eight times: once through the quote endpoint and again through the deposit,
+ * each reaching it from three directions. Gas does not move meaningfully
+ * inside one request, so neither should the answer.
+ */
+const FEE_TTL_MS = 5_000
+let feeMemo: { at: number; value: Promise<bigint> } | null = null
+
+export function feePerOperation(): Promise<bigint> {
+  if (!paymasterRead) return Promise.resolve(0n)
+  if (!feeMemo || Date.now() - feeMemo.at > FEE_TTL_MS) {
+    feeMemo = { at: Date.now(), value: readFeePerOperation() }
+    // A failed lookup must not be cached, or one bad RPC poisons five seconds.
+    feeMemo.value.catch(() => { feeMemo = null })
+  }
+  return feeMemo.value
+}
+
+async function readFeePerOperation(): Promise<bigint> {
+  const fees = await provider.getFeeData()
   const gasPrice = fees.maxFeePerGas ?? fees.gasPrice ?? 1_000_000_000n
-  return (await pm.quote(TYPICAL_OP_GAS * gasPrice)) as bigint
+  return (await paymasterRead!.quote(TYPICAL_OP_GAS * gasPrice)) as bigint
 }
 
 /** The allowance we want the paymaster to hold, at current prices. */
 export async function feeAllowanceTarget(): Promise<bigint> {
-  const perOp = await feePerOperation()
-  const target = perOp * OPS_OF_HEADROOM
+  const target = (await feePerOperation()) * OPS_OF_HEADROOM
   return target > MIN_FEE_BUFFER ? target : MIN_FEE_BUFFER
 }
 
@@ -90,13 +107,13 @@ export async function feeAllowanceTarget(): Promise<bigint> {
  *  splice it in. */
 export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
   if (!USDT_PAYMASTER) return []
-  const [allowance, target, perOp] = await Promise.all([
+  const [allowance, perOp] = await Promise.all([
     assetRead.allowance(parent, USDT_PAYMASTER) as Promise<bigint>,
-    feeAllowanceTarget(),
     feePerOperation(),
   ])
   // Re-approve once it's down to a handful of operations' worth.
   if (allowance >= perOp * 20n) return []
+  const target = await feeAllowanceTarget()
   return [{ to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [USDT_PAYMASTER, target]) }]
 }
 
@@ -111,7 +128,12 @@ export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
  */
 export const MINT_CHUNK = 100_000_000000n // 100,000 USD₮
 
-export const provider = new ethers.JsonRpcProvider(RPC_URL)
+/**
+ * The chain id is a constant in this file, so tell ethers rather than letting
+ * it ask. Left to detect, it issues a real `eth_chainId` before every call
+ * wave — three per `/api/state`, eight per write.
+ */
+export const provider = new ethers.JsonRpcProvider(RPC_URL, CHAIN_ID, { staticNetwork: true })
 
 export const erc20 = new ethers.Interface([
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -168,6 +190,8 @@ export const managerIface = new ethers.Interface([
  *  account was actually charged, in USD₮, after the operation ran. */
 export const paymasterIface = new ethers.Interface([
   'event Charged(address indexed account, uint256 gasCostWei, uint256 usdtCharged)',
+  'function quote(uint256 gasCostWei) view returns (uint256)',
+  'function usdtPerNativeUnit() view returns (uint256)',
 ])
 
 /** Pull the real USD₮ fee out of a userOp receipt, if our paymaster charged one. */
@@ -184,6 +208,11 @@ export function feeChargedFromLogs(logs: Array<{ address: string; topics: string
 }
 
 export const managerRead = new ethers.Contract(MANAGER, managerIface, provider)
+/** Built once. It used to be constructed inside `feePerOperation`, so every
+ *  fee lookup re-parsed an ABI. */
+export const paymasterRead = USDT_PAYMASTER
+  ? new ethers.Contract(USDT_PAYMASTER, paymasterIface, provider)
+  : null
 export const assetRead = new ethers.Contract(AAVE.ASSET, erc20, provider)
 export const aAssetRead = new ethers.Contract(AAVE.A_ASSET, erc20, provider)
 

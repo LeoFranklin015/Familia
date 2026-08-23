@@ -11,21 +11,14 @@
 // hold. Its whole job is to name the paymaster and quote gas limits. Every
 // rule that matters is enforced on-chain.
 import { Hono } from 'hono'
-import { ethers } from 'ethers'
-import { AAVE, CHAIN_ID, provider } from './chain.js'
+import { AAVE, CHAIN_ID, USDT_PAYMASTER, paymasterRead } from './chain.js'
 
-export const USDT_PAYMASTER = process.env.USDT_PAYMASTER_ADDRESS ?? ''
 const ENTRY_POINT_V8 = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
 
 /** Gas the EntryPoint should budget for our postOp: one ERC-20 transferFrom
  *  plus event, with head-room. Under-quoting here makes the bundler drop the
  *  operation at settlement time, so it is deliberately generous. */
 const POSTOP_GAS = 120_000n
-
-const paymasterIface = new ethers.Interface([
-  'function quote(uint256 gasCostWei) view returns (uint256)',
-  'function usdtPerNativeUnit() view returns (uint256)',
-])
 
 const hex = (v: bigint) => '0x' + v.toString(16)
 
@@ -49,7 +42,7 @@ paymasterService.post('/paymaster', async (c) => {
     // Candide-shaped discovery, which is how WDK asks what a non-Pimlico
     // paymaster will accept and at what rate.
     case 'pm_supportedERC20Tokens': {
-      const rate = (await new ethers.Contract(USDT_PAYMASTER, paymasterIface, provider)
+      const rate = (await paymasterRead!
         .usdtPerNativeUnit()) as bigint
       return reply({
         tokens: [{

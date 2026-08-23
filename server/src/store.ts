@@ -227,8 +227,6 @@ export async function mustFamily(id: string): Promise<Family> {
   return f
 }
 
-export const saveFamily = (f: Family) => chosen().putFamily(f)
-export const listFamilies = () => chosen().listFamilies()
 
 /**
  * Apply a change to a household atomically.
