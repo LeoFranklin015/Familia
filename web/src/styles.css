@@ -1426,3 +1426,12 @@ a:hover { color: #fff; }
   color: inherit;
   text-align: left;
 }
+
+/* The other way to do the same thing. A line under the action rather than a
+   second button beside it: one filled control per screen, and the alternative
+   should not look like a competing choice. */
+.alt {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 13px;
+}

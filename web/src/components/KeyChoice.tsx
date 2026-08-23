@@ -43,7 +43,7 @@ export function KeyChoice({
         <button className="btn tap" onClick={onFaceId} disabled={busy}>
           {busy ? <><span className="spin" />{working}</> : faceId}
         </button>
-        <button className="btn btn--quiet tap mt2" onClick={() => onMode('passphrase')}>
+        <button className="link link--muted tap alt" onClick={() => onMode('passphrase')}>
           Use a passphrase instead
         </button>
       </>
@@ -67,7 +67,7 @@ export function KeyChoice({
         {busy ? <><span className="spin" />{working}</> : confirm}
       </button>
       {webauthnAvailable() && (
-        <button className="btn btn--quiet tap mt2" onClick={() => onMode('faceId')}>
+        <button className="link link--muted tap alt" onClick={() => onMode('faceId')}>
           Use Face ID instead
         </button>
       )}

@@ -275,10 +275,10 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               </div>
             )}
 
-            {/* Nothing on this browser identifies the account, so it is named
-                by its address. That is the way back in after a browser is
-                cleared, and the only one a passphrase account has. */}
-            {!picked && (
+            {/* Only a passphrase needs this. A passkey carries its own
+                identity, so on an unknown browser the authenticator offers
+                whatever it holds and nothing has to be typed at all. */}
+            {!picked && usePassphrase && (
               <label className="field">
                 <span>Your account address</span>
                 <input
@@ -304,6 +304,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               onFaceId={signInFaceId}
               onSubmit={signInPassphrase}
               blocked={!picked && !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
+
             />
             <button className="link tap mt2" style={{ alignSelf: 'center' }} onClick={() => go('welcome')}>Back</button>
           </>
