@@ -136,6 +136,12 @@ export function mongoBackend(uri: string, dbName: string): Backend {
       return strip(await vaults.findOne({ _id: credentialId })) as Vault | null
     },
 
+    async getVaultByAddress(address) {
+      return strip(await vaults.findOne({
+        address: { $regex: `^${address.replace(/[^0-9a-fA-Fx]/g, '')}$`, $options: 'i' },
+      })) as Vault | null
+    },
+
     async putVault(vault) {
       await vaults.updateOne(
         { _id: vault.credentialId },

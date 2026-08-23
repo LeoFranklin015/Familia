@@ -30,6 +30,15 @@ export type Backend = {
   findInviteFamilyId(token: string): Promise<string | null>
 
   getVault(credentialId: string): Promise<Vault | null>
+  /**
+   * The vault for an account address.
+   *
+   * A passkey names its own credential, so signing in with one needs no
+   * lookup. A passphrase names nothing: its credential id is a uuid this
+   * server made up and only that browser ever saw. Without a way in by
+   * address, clearing a browser locked a passphrase account out for good.
+   */
+  getVaultByAddress(address: string): Promise<Vault | null>
   putVault(vault: Vault): Promise<void>
 
   getSession(id: string): Promise<Session | null>

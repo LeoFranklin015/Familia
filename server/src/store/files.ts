@@ -92,6 +92,15 @@ export function fileBackend(): Backend {
       return readJson<Vault>(vaultPath(credentialId))
     },
 
+    async getVaultByAddress(address) {
+      const want = address.toLowerCase()
+      for (const name of readdirSync(VAULTS)) {
+        const v = readJson<Vault>(join(VAULTS, name))
+        if (v?.address.toLowerCase() === want) return v
+      }
+      return null
+    },
+
     async putVault(vault) {
       if (!safeId(vault.credentialId)) throw new Error('Unusable credential id.')
       writeAtomic(vaultPath(vault.credentialId), vault, 0o600)

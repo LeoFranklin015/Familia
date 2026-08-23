@@ -11,7 +11,7 @@ import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
 import { randomUUID } from 'node:crypto'
 import {
   createFamily, createSession, destroySession, findInvite, getFamily, getVault,
-  mustFamily, newInvite, putVault, updateFamily,
+  getVaultByAddress, mustFamily, newInvite, putVault, updateFamily,
 } from '../store.js'
 import { createVaultEntry, openVaultEntry, type KeySource } from '../vault.js'
 import { addressForMnemonic } from '../wdk.js'
@@ -92,18 +92,57 @@ joinRoutes.post('/api/join/:token', async (c) => {
   return c.json({ role: session.role, address, credentialId, familyName: family.name })
 })
 
+/**
+ * How many wrong tries an account takes before it stops answering, and for how
+ * long.
+ *
+ * Signing in by address makes the passphrase the only secret, and an address is
+ * public by nature. This is not a substitute for a real rate limiter in front
+ * of the service, but it does turn an online guessing attack from cheap into
+ * slow. Held in memory: losing the counters on restart costs an attacker a
+ * restart, and costs an honest person nothing.
+ */
+const MAX_TRIES = 8
+const LOCKOUT_MS = 5 * 60 * 1000
+const tries = new Map<string, { n: number; until: number }>()
+
+function throttled(key: string): boolean {
+  const t = tries.get(key)
+  if (!t) return false
+  if (Date.now() > t.until) { tries.delete(key); return false }
+  return t.n >= MAX_TRIES
+}
+
+function missed(key: string): void {
+  const t = tries.get(key)
+  tries.set(key, { n: (t && Date.now() <= t.until ? t.n : 0) + 1, until: Date.now() + LOCKOUT_MS })
+}
+
 joinRoutes.post('/api/session', async (c) => {
-  const body = (await c.req.json()) as KeySource & { credentialId: string }
-  const vault = await getVault(body.credentialId)
-  if (!vault) return c.json({ error: 'No account for this passkey.' }, 404)
+  const body = (await c.req.json()) as KeySource & { credentialId?: string; address?: string }
+
+  // A passkey names its own credential. A passphrase names nothing, so it
+  // signs in by account address, which the app shows and the chain knows.
+  const key = (body.credentialId ?? body.address ?? '').trim()
+  if (!key) return c.json({ error: 'Say which account this is.' }, 400)
+  if (throttled(key.toLowerCase())) {
+    return c.json({ error: 'Too many tries. Wait five minutes and try again.' }, 429)
+  }
+
+  const vault = body.credentialId
+    ? await getVault(body.credentialId)
+    : await getVaultByAddress(key)
+  if (!vault) return c.json({ error: 'No account found for that.' }, 404)
 
   // Unlocking proves the key works before a session is handed out; the
   // mnemonic is used for nothing else here and goes out of scope immediately.
   try {
     await openVaultEntry(vault, body)
   } catch {
+    missed(key.toLowerCase())
     return c.json({ error: 'Could not unlock. Wrong key or passphrase.' }, 401)
   }
+  tries.delete(key.toLowerCase())
 
   const family = await getFamily(vault.familyId)
   if (!family) return c.json({ error: 'That family no longer exists.' }, 404)

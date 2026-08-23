@@ -291,6 +291,7 @@ export async function record(familyId: string, entry: Omit<Activity, 'id' | 'at'
 // ----------------------------------------------------------------- vaults
 export const putVault = (v: Vault) => chosen().putVault(v)
 export const getVault = (credentialId: string) => chosen().getVault(credentialId)
+export const getVaultByAddress = (address: string) => chosen().getVaultByAddress(address)
 
 // --------------------------------------------------------------- sessions
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000 // identity only; grants no spending

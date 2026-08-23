@@ -14,6 +14,7 @@ import { webauthnAvailable } from '../webauthn'
  */
 export function KeyChoice({
   mode, onMode, passphrase, onPassphrase, busy, faceId, confirm, working, onFaceId, onSubmit,
+  blocked,
 }: {
   mode: 'faceId' | 'passphrase'
   onMode: (m: 'faceId' | 'passphrase') => void
@@ -28,6 +29,8 @@ export function KeyChoice({
   working: string
   onFaceId: () => void
   onSubmit: () => void
+  /** Something else the caller still needs before this can be submitted. */
+  blocked?: boolean
 }) {
   if (mode === 'faceId') {
     return (
@@ -60,7 +63,7 @@ export function KeyChoice({
           onChange={(e) => onPassphrase(e.target.value)}
         />
       </label>
-      <button className="btn tap" onClick={onSubmit} disabled={busy || passphrase.length < 8}>
+      <button className="btn tap" onClick={onSubmit} disabled={busy || blocked || passphrase.length < 8}>
         {busy ? <><span className="spin" />{working}</> : confirm}
       </button>
       {webauthnAvailable() && (

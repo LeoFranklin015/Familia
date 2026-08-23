@@ -22,6 +22,8 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   const [parentName, setParentName] = useState('')
   const [token, setToken] = useState('')
   const [passphrase, setPassphrase] = useState('')
+  // Only asked for when this browser has no credential of its own to offer.
+  const [address, setAddress] = useState('')
   const [usePassphrase, setUsePassphrase] = useState(false)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -78,12 +80,22 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
     } finally { setBusy(false) }
   }
 
+  /**
+   * Sign in with a passphrase.
+   *
+   * A passkey carries its own identity; a passphrase does not. On a browser
+   * that has signed in before we still have the credential it used, so nothing
+   * needs typing. On a fresh one the account is named by its address, which
+   * the app shows on the home screen and the chain knows anyway. Without that
+   * second path, clearing a browser locked the account away for good.
+   */
   const signInPassphrase = async () => {
     setErr(''); setBusy(true)
     try {
       const credentialId = knownCredentialId()
-      if (!credentialId) throw new Error("There's no account on this device yet.")
-      await api.post('/api/session', { credentialId, passphrase })
+      await api.post('/api/session', credentialId
+        ? { credentialId, passphrase }
+        : { address: address.trim(), passphrase })
       onReady()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not sign in.')
@@ -198,8 +210,25 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
             <div className="kicker">Familia</div>
             <div className="spacer" />
             <h2 className="title" style={{ marginBottom: 10 }}>Welcome back.</h2>
-            <p className="lede">Same face, same account.</p>
+            <p className="lede">
+              {knownCredentialId()
+                ? 'Same face, same account.'
+                : 'This browser is new here, so say which account is yours.'}
+            </p>
             <div className="spacer" />
+
+            {/* Nothing to identify the account with, so ask. A passkey supplies
+                its own credential and skips this entirely. */}
+            {!knownCredentialId() && usePassphrase && (
+              <label className="field">
+                <span>Your account address</span>
+                <input
+                  className="input num" value={address} placeholder="0x…" spellCheck={false}
+                  autoCapitalize="off" autoComplete="username"
+                  onChange={(e) => setAddress(e.target.value)}
+                />
+              </label>
+            )}
 
             <KeyChoice
               mode={usePassphrase ? 'passphrase' : 'faceId'}
@@ -212,6 +241,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               working="Opening…"
               onFaceId={signInFaceId}
               onSubmit={signInPassphrase}
+              blocked={!knownCredentialId() && !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
             />
             <button className="link tap mt2" style={{ alignSelf: 'center' }} onClick={() => go('welcome')}>Back</button>
           </>
