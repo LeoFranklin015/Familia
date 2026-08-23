@@ -1,238 +1,358 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, type MemberState } from '../api'
-import { approve, knownCredentialId, NeedsPassphrase, post } from '../auth'
+import { approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
+import { Confirm, type Pending } from '../components/Confirm'
+import { OpModal, type Op } from '../components/Op'
 import { Sheet } from '../components/Sheet'
-import { Progress, type Job } from '../components/Progress'
-import { TopBar } from '../App'
-import { Empty, Icon, Money, ScreenSkeleton } from '../components/ui'
+import { Amount, label, looksLikeAddress, match, Saved, To } from '../components/Pay'
+import { Scan, scanningSupported } from '../components/Scan'
+import { Blob, Figure, Icon, ScreenSkeleton, split, two } from '../components/ui'
+import { resetDay, when } from './Activity'
 
-type SendState =
-  | { kind: 'idle' }
-  | { kind: 'sending' | 'asking' }
-  | { kind: 'sent'; txHash?: string }
-  | { kind: 'asked' }
-  | { kind: 'error'; message: string }
+type Tab = 'pay' | 'activity'
 
 /**
- * The member's whole app is one question: who are you paying, and how much.
+ * The whole app, for a kid.
  *
- * There is no pot here and no balance — a child should not be told how much
- * money the household has, and `/api/me` doesn't even contain it. What they
- * need to know is whether this particular payment goes through or turns into a
- * request, and the button answers that as they type.
+ * Two screens and one question: who, and how much. There is no balance here
+ * and no sign that anyone else exists — the server refuses to tell this
+ * session either, so it is a rule rather than a hidden view.
  *
- * The amount is the interface, and the action sits at the bottom of the screen
- * where a thumb already is.
+ * The important behaviour is that the button never dies. Over the limit it
+ * stops promising a payment and starts promising a request, which is what the
+ * contract will actually do: `spend` above the cap doesn't fail, it becomes
+ * something a guardian can wave through.
  */
 export default function Member({ onLogout }: { onLogout: () => void }) {
   const [me, setMe] = useState<MemberState | null>(null)
-  const [amount, setAmount] = useState('')
+  const [tab, setTab] = useState<Tab>('pay')
   const [to, setTo] = useState('')
-  const [state, setState] = useState<SendState>({ kind: 'idle' })
-  const [job, setJob] = useState<Job | null>(null)
-  const [askPass, setAskPass] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [scan, setScan] = useState(false)
+  const [op, setOp] = useState<Op | null>(null)
+  const [pending, setPending] = useState<Pending | null>(null)
+  const [askPass, setAskPass] = useState<((a: Approval) => void) | null>(null)
   const [passphrase, setPassphrase] = useState('')
-  const amountRef = useRef<HTMLInputElement>(null)
 
-  const load = () => api.get<MemberState>('/api/me').then(setMe).catch(() => {})
+  const load = useCallback(() => api.get<MemberState>('/api/me').then(setMe).catch(() => {}), [])
   useEffect(() => {
-    load()
-    const t = setInterval(load, 12_000)
+    void load()
+    const t = setInterval(load, 10_000)
     return () => clearInterval(t)
-  }, [])
+  }, [load])
 
   if (!me) {
     return (
-      <div className="app">
-        <TopBar who="" onLogout={onLogout} />
-        <ScreenSkeleton label="Loading your account" />
+      <div className="screen">
+        <div className="scroll"><ScreenSkeleton label="Loading" /></div>
       </div>
     )
   }
 
-  if (!me.hasAllowance) {
-    return (
-      <div className="app">
-        <TopBar who={me.name} onLogout={onLogout} />
-        <Empty icon={<Icon.lock />} title="Nothing to spend yet">
-          Ask a parent to set you up. It takes them a second.
-        </Empty>
-        <History items={me.activity} symbol={me.symbol} />
-      </div>
-    )
-  }
+  const value = Number(amount || '0')
+  const headroom = Number(me.headroom)
+  const perTx = Number(me.limit ?? 0)
+  const address = to.trim()
+  const known = match(me.recipients, address)
+  const valid = looksLikeAddress(address)
+  const name = label(me.recipients, address)
 
-  const amt = Number(amount || '0')
-  const overLimit = amt > 0 && amt > Number(me.headroom)
-  const merchant = me.merchants.find((m) => m.address === to)
-  const busy = state.kind === 'sending' || state.kind === 'asking'
-  const ready = Boolean(to) && amt > 0
+  const overPerTx = perTx > 0 && value > perTx
+  const overWeek = value > headroom
+  const over = value > 0 && (overPerTx || overWeek)
+  const offList = me.allowOnly && valid && !known
+  const ready = valid && value > 0
 
-  /** Paying asks for a face first — the same confirmation a phone puts in
-   *  front of every other payment. */
-  const submit = async (auth?: Parameters<typeof post>[2]) => {
-    let approval = auth
-    if (!approval) {
+  /** Why this won't go through as typed. One line, never a wall. */
+  const problem = !address ? undefined
+    : !valid ? "That doesn't look like an address yet."
+    : offList ? 'Not on the list at home — the contract will refuse this one.'
+    : undefined
+
+  const hint = offList ? 'Whoever set this up has to add this address first.'
+    : overPerTx ? `Over your ${two(me.limit)} limit — this goes home to say yes to.`
+    : overWeek && value > 0 ? 'More than you have left this week — a parent can wave it through.'
+    : undefined
+
+  /**
+   * Pay, or ask. Same button, same gesture, and the wording is decided by the
+   * same arithmetic the contract will do.
+   *
+   * Members are always sponsored: a kid should never need a token balance to
+   * spend an allowance, so no quote is fetched and the fee reads as covered.
+   */
+  const pay = () => {
+    const asking = over
+    const title = asking ? `Ask to pay ${two(amount)} to ${name}` : `Pay ${two(amount)} to ${name}`
+    const steps = asking
+      ? ['Try the payment', 'Turn it into a request']
+      : ['Take it out of Aave', `Send it to ${name}`]
+
+    const run = async (auth: Approval) => {
+      setPending(null)
+      setOp({ title, steps, done: 0, status: 'running', symbol: me.symbol, covered: true })
       try {
-        approval = await approve()
+        const r = await api.post<{ kind: string; txHash?: string }>('/api/spend', { to: address, amount, auth })
+        setOp((o) => o && { ...o, status: 'done', done: o.steps.length, txHash: r.txHash })
+        setAmount(''); setTo('')
+        await load()
       } catch (e) {
-        if (e instanceof NeedsPassphrase) { setAskPass(true); return }
-        setState({ kind: 'error', message: 'Approval was cancelled.' })
-        return
+        setOp((o) => o && {
+          ...o, status: 'failed',
+          reason: e instanceof Error ? e.message : 'Something went wrong.',
+        })
       }
     }
-    const title = overLimit ? 'Asking a parent' : `Paying ${merchant?.name ?? 'them'}`
-    setState({ kind: overLimit ? 'asking' : 'sending' })
-    setJob({ state: 'running', title, note: overLimit ? 'Sending your request.' : 'Sending the payment.' })
-    try {
-      const r = await post<{ kind: 'spent' | 'asked'; txHash?: string }>('/api/spend', { to, amount }, approval)
-      setState({ kind: 'idle' })
-      setJob(r.kind === 'spent'
-        ? { state: 'done', title, note: `${amount} ${me.symbol} sent.`, txHash: r.txHash }
-        : { state: 'done', title, note: "Asked. You'll see it here when they answer." })
-      setAmount('')
-      load()
-    } catch (e) {
-      setState({ kind: 'idle' })
-      setJob({ state: 'failed', title, reason: e instanceof Error ? e.message : 'Something went wrong.' })
-    }
+
+    setPending({
+      title, fee: null, symbol: me.symbol, covered: true,
+      run: () => {
+        approve().then(run).catch((e) => {
+          if (e instanceof NeedsPassphrase) { setAskPass(() => run); return }
+          setPending(null)
+        })
+      },
+    })
   }
 
-  const submitWithPassphrase = () => {
+  const withPassphrase = () => {
     const credentialId = knownCredentialId()
-    if (!credentialId) { setState({ kind: 'error', message: 'No account on this device.' }); return }
-    setAskPass(false)
+    const run = askPass
     const pass = passphrase
-    setPassphrase('')
-    submit({ credentialId, passphrase: pass })
+    setAskPass(null); setPassphrase('')
+    if (credentialId && run) run({ credentialId, passphrase: pass })
+  }
+
+  const waiting = me.myRequests.filter((r) => r.status === 'pending').length
+
+  /* Nothing to spend. Two different situations wearing the same shape: never
+     granted, or turned off — and a kid deserves to know which. */
+  if (!me.hasAllowance) {
+    return (
+      <div className="screen">
+        <div className="scroll">
+          <div className="page--full">
+            <div className="kicker">{me.familyName} household</div>
+            <div className="spacer" />
+            <div className="markbox" style={{ marginBottom: 20 }}>
+              <Icon name="lock" size={24} />
+            </div>
+            <h2 className="title title--sm" style={{ marginBottom: 10 }}>
+              {me.revoked ? 'Spending is off' : 'Nothing to spend yet'}
+            </h2>
+            <p className="lede">
+              {me.revoked
+                ? 'Someone at home turned it off. It can come back on the same way.'
+                : 'Ask whoever set this up to give you a limit — it takes them a few seconds.'}
+            </p>
+            <div className="spacer" />
+            <div className="kicker kicker--faint">Nothing here belongs to you yet</div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="app app--acting">
-      <TopBar who={me.name} onLogout={onLogout} />
+    <div className="screen">
+      <div className="scroll">
+        {tab === 'pay' ? (
+          <div className="page page--action">
+            <div className="sec">
+              <div className="kicker">{me.familyName} household</div>
+              <span className="avatar avatar--xs">{me.name[0]?.toUpperCase()}</span>
+            </div>
 
-      <h1>Pay</h1>
-      {me.limit && <p className="hint">Up to {me.limit} {me.symbol} at a time</p>}
+            <div className="balance">
+              <div className="kicker">Left this week</div>
+              <div style={{ marginTop: 12 }}>
+                <Figure value={me.headroom} unit={me.symbol} />
+              </div>
+              <div className="note mt3">{me.symbol} · yours to spend</div>
+              <div className="chip chip--static mt3">
+                <Icon name="lock" size={14} />
+                <span className="num">{two(me.limit)} max in one go</span>
+              </div>
+            </div>
 
-      <div className="card mt4">
-        <h2 id="who" className="sr-only">Who to pay</h2>
-        <div className="chips" role="group" aria-labelledby="who">
-          {me.merchants.map((m) => (
-            <button
-              key={m.address}
-              type="button"
-              className="chip"
-              aria-pressed={to === m.address}
-              onClick={() => { setTo(m.address); amountRef.current?.focus() }}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
+            <div className="pair mt2">
+              <div className="tile">
+                <div className="tile__label">Spent this week</div>
+                <div className="tile__figure">{two(me.spentThisPeriod)}</div>
+                <div className="tile__note">of {two(me.period)}</div>
+              </div>
+              <div className="tile tile--pale">
+                <div className="tile__label">Starts again</div>
+                <div className="tile__figure">{resetDay(me.resetsAt)}</div>
+                <div className="tile__note">the week resets</div>
+              </div>
+            </div>
 
-        <label htmlFor="amount" className="sr-only">Amount in {me.symbol}</label>
-        <div className="amount">
-          <input
-            id="amount"
-            ref={amountRef}
-            className="num"
-            inputMode="decimal"
-            enterKeyHint="done"
-            autoComplete="off"
-            placeholder="0"
-            size={4}
-            value={amount}
-            onChange={(e) => {
-              // One leading figure set, one optional decimal part.
-              const cleaned = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')
-              setAmount(cleaned)
-              if (state.kind !== 'idle') setState({ kind: 'idle' })
-            }}
-            style={{ width: `${Math.max(1, amount.length || 1)}ch` }}
-          />
-          <span className="amount__unit">{me.symbol}</span>
-        </div>
+            <div className="kicker kicker--muted sec__pad">To</div>
+            <To
+              value={to}
+              onChange={setTo}
+              onScan={() => setScan(true)}
+              recipients={me.recipients}
+              canScan={scanningSupported()}
+              problem={problem}
+            />
 
-        {overLimit && (
-          <p className="hint" style={{ textAlign: 'center' }}>
-            Over your limit — this becomes a request.
-          </p>
+            {me.recipients.length > 0 && (
+              <>
+                <div className="kicker kicker--muted" style={{ padding: '20px 8px 10px' }}>Saved</div>
+                <Saved recipients={me.recipients} value={to} onPick={setTo} />
+              </>
+            )}
+
+            <Amount value={amount} onChange={setAmount} symbol={me.symbol} tone={over ? 'over' : 'normal'} />
+          </div>
+        ) : (
+          <MyWeek me={me} />
         )}
-
       </div>
 
-      <History items={me.activity} symbol={me.symbol} pending={me.myRequests.filter((r) => r.status === 'pending')} />
-
-      {/* The action lives in the thumb zone, above the home indicator. Over the
-          limit it doesn't disable — it changes what it does. */}
-      <div className="actionbar">
-        <div className="actionbar__inner">
+      {tab === 'pay' && (
+        <div className="actionbar">
+          {hint && <p className="actionbar__hint">{hint}</p>}
           <button
-            className={`btn btn--block ${overLimit ? 'btn--ask' : 'btn--primary'}`}
-            onClick={() => submit()}
-            disabled={busy || !ready}
+            className={`btn tap${over ? ' btn--ask' : ''}`}
+            disabled={!ready}
+            onClick={pay}
           >
-            {busy && <span className="spinner" />}
-            {state.kind === 'sending' && 'Paying…'}
-            {state.kind === 'asking' && 'Asking…'}
-            {!busy && (overLimit
-              ? `Ask to pay ${amount}`
-              : ready ? `Pay ${merchant?.name ?? 'them'}` : 'Pay')}
+            {!valid ? 'Enter an address'
+              : value <= 0 ? 'Enter an amount'
+              : over ? `Ask to pay ${two(amount)}`
+              : `Pay ${two(amount)} to ${name}`}
           </button>
         </div>
-      </div>
+      )}
 
-      <Progress job={job} onClose={() => setJob(null)} />
+      <nav className="tabbar" role="tablist" aria-label="Sections">
+        {([['pay', 'Pay', 'pay'], ['activity', 'Activity', 'activity']] as const).map(([id, text, icon]) => (
+          <button
+            key={id} role="tab" aria-selected={tab === id}
+            className={`tab tap${tab === id ? ' tab--on' : ''}`}
+            aria-label={text} onClick={() => setTab(id)}
+          >
+            <Icon name={icon} size={19} />
+            {tab === id && <span>{text}</span>}
+            {id === 'activity' && waiting > 0 && <span className="tab__badge">{waiting}</span>}
+          </button>
+        ))}
+      </nav>
 
-      <Sheet open={askPass} title="Confirm it's you" onClose={() => setAskPass(false)}>
-        <p className="hint">This device can't use Face ID, so your passphrase approves the payment.</p>
-        <label htmlFor="pp">Your passphrase</label>
-        <input id="pp" type="password" value={passphrase} autoFocus enterKeyHint="go"
-          onChange={(e) => setPassphrase(e.target.value)} />
-        <button className="btn btn--primary btn--block mt4" disabled={passphrase.length < 8} onClick={submitWithPassphrase}>
+      {scan && <Scan onCancel={() => setScan(false)} onFound={(a) => { setTo(a); setScan(false) }} />}
+
+      <Sheet open={Boolean(askPass)} title="Confirm it's you" onClose={() => setAskPass(null)}>
+        <p className="hint">This device can&rsquo;t use Face ID, so your passphrase approves it.</p>
+        <label className="field mt3">
+          <span>Passphrase</span>
+          <input
+            className="input" type="password" value={passphrase} autoFocus enterKeyHint="go"
+            onChange={(e) => setPassphrase(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && passphrase.length >= 8) withPassphrase() }}
+          />
+        </label>
+        <button className="btn tap mt4" disabled={passphrase.length < 8} onClick={withPassphrase}>
           Approve
         </button>
       </Sheet>
+
+      <Confirm pending={pending} onCancel={() => setPending(null)} />
+      <OpModal op={op} onClose={() => setOp(null)} />
     </div>
   )
 }
 
-function History({
-  items, symbol, pending = [],
-}: {
-  items: MemberState['activity']
-  symbol: string
-  pending?: MemberState['myRequests']
-}) {
-  if (items.length === 0 && pending.length === 0) return null
+/* ── their week ──────────────────────────────────────────────────────────── */
+
+/**
+ * The week as a ring.
+ *
+ * A kid's question is never "what is my period cap", it's "how much is left" —
+ * and a filling ring answers that at a glance in a way two numbers never do.
+ */
+function MyWeek({ me }: { me: MemberState }) {
+  const period = Number(me.period ?? 0)
+  const spent = Number(me.spentThisPeriod)
+  const fraction = period > 0 ? Math.min(1, spent / period) : 0
+  const circumference = 2 * Math.PI * 96
+  const s = split(me.spentThisPeriod)
+
   return (
-    <section className="card">
-      <h2>Your activity</h2>
-      <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {pending.map((r) => (
-          <li className="row" key={r.requestId}>
-            <div className="row__main">
-              <Money value={r.amount} unit={symbol} size="sm" />
-              <div className="meta">to {r.toName}</div>
-            </div>
-            <span className="pill pill--wait">waiting</span>
-          </li>
-        ))}
-        {items.map((a) => (
-          <li className="row" key={a.id}>
-            <div className="row__main">
-              <div className="row__title">{a.text}</div>
-              <div className="meta">
-                {new Date(a.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+    <div className="page">
+      <div className="kicker" style={{ padding: '0 8px' }}>This week</div>
+
+      <div className="ring">
+        <Blob size={44} left={16} top={26} rotate={-16} opacity={0.5} />
+        <Blob size={26} left={44} top={78} rotate={12} opacity={0.35} />
+        <Blob size={34} right={20} bottom={24} rotate={-24} opacity={0.42} />
+
+        <svg width="226" height="226" viewBox="0 0 226 226" role="img"
+             aria-label={`${two(me.spentThisPeriod)} of ${two(me.period)} ${me.symbol} spent`}>
+          <circle className="ring__track" cx="113" cy="113" r="96" />
+          <circle
+            className="ring__arc" cx="113" cy="113" r="96"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - fraction)}
+          />
+        </svg>
+
+        <div className="ring__mid">
+          <div className="kicker" style={{ fontSize: 10, letterSpacing: '0.12em' }}>Spent</div>
+          <div className="figure figure--md" style={{ marginTop: 4 }}>
+            <span className="figure__big">{s.big}</span>
+            <span className="figure__cents">{s.cents}</span>
+          </div>
+          <div className="note mt1" style={{ fontSize: 11.5 }}>of {two(me.period)} {me.symbol}</div>
+        </div>
+      </div>
+
+      <div className="pair mt3">
+        <div className="tile" style={{ padding: '14px 16px' }}>
+          <div className="tile__label" style={{ fontSize: 10 }}>Left</div>
+          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>{two(me.headroom)}</div>
+        </div>
+        <div className="tile" style={{ padding: '14px 16px' }}>
+          <div className="tile__label" style={{ fontSize: 10 }}>Starts again</div>
+          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>{resetDay(me.resetsAt)}</div>
+        </div>
+      </div>
+
+      {me.activity.length > 0 ? (
+        <div style={{ marginTop: 22 }}>
+          <div className="kicker kicker--muted" style={{ padding: '0 8px 6px' }}>Yours</div>
+          {me.activity.map((a) => {
+            const waiting = a.kind === 'ask'
+            return (
+              <div
+                key={a.id}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderTop: '1px solid var(--line)' }}
+              >
+                <span
+                  className="avatar avatar--sm"
+                  style={{
+                    background: 'var(--fill-2)', borderColor: 'transparent',
+                    color: waiting ? 'var(--accent)' : 'var(--muted)',
+                  }}
+                >
+                  <Icon name={waiting ? 'activity' : 'shop'} size={16} />
+                </span>
+                <span className="row__body">
+                  <span style={{ display: 'block', fontSize: 13.5, lineHeight: 1.4 }}>{a.text}</span>
+                  <span style={{ display: 'block', fontSize: 11, marginTop: 2, color: 'var(--faint)' }}>
+                    {when(a.at)}
+                  </span>
+                </span>
+                {waiting && <span className="tag tag--waiting">waiting</span>}
               </div>
-            </div>
-            {a.txHash && (
-              <a className="txlink" href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer"
-                 aria-label="View this payment on the block explorer">↗</a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="empty mt5">Nothing spent yet. What you pay for shows up here.</p>
+      )}
+    </div>
   )
 }

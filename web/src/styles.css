@@ -1,763 +1,959 @@
-@font-face {
-  font-family: 'Instrument Sans';
-  src: url('/fonts/instrument-sans.woff2') format('woff2');
-  font-weight: 400 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Instrument Serif';
-  src: url('/fonts/instrument-serif.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   Kin — the design system.
+   Tokens first, then type, then surfaces, then controls, then the pieces.
+   Change a token and the app changes.
 
-/* Kin — household money, shared and bounded.
- *
- * A quiet ledger, built for a phone. Ink on paper, one deep green for money
- * that moved, hairline rules instead of shadows, tabular numerals wherever a
- * figure appears. Nothing rounded more than it needs to be.
- *
- * Layout assumes a handset held one-handed: each screen's primary action sits
- * in the thumb zone at the bottom, above the home indicator, and the chrome
- * stays out of the way. */
+   Committed to one palette. This is a night-time green: money at rest in a
+   dark room. A light theme was tried and lost — the balance card is the whole
+   product, and it only reads as a held thing against a dark ground.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 :root {
-  /* Spacing — 4px scale. Nothing off-scale anywhere. */
-  --s1: 0.25rem;  --s2: 0.5rem;   --s3: 0.75rem;  --s4: 1rem;
-  --s5: 1.25rem;  --s6: 1.5rem;   --s8: 2rem;     --s10: 2.5rem;
+  /* — ground — */
+  --bg: #07100c;
+  --surface: #0f1a15;
+  --sheet: #0c1912;
+  --scrim: rgb(3 8 6 / 0.62);
+  --scrim-deep: rgb(3 8 6 / 0.78);
 
-  /* Radii — a real hierarchy: controls, cards, sheets, pills. */
-  --r-control: 12px;
-  --r-card: 16px;
-  --r-sheet: 22px;
-  --r-pill: 999px;
+  /* — ink — */
+  --text: #eaf3ee;
+  --body: #c3d6cc;
+  --muted: #8ea79a;
+  --faint: #5f7a6d;
+  --dim: #3c5a4c;
 
-  --tap: 44px; /* minimum touch target */
+  /* — green — */
+  --accent: #5fd3a3;
+  --pale: #d7f0e4;
+  --deep: #0d3b2c;
+  --mid: #2f9e77;
+  --ink: #06110c;
+  --on-pale: #4b6b5d;
+  --cents: #a8c4b7;
+  --warn: #b9e0cd;
 
-  /* Safe areas come from the device on a phone. Inside the desktop frame they
-     are supplied by the frame instead, so the same layout rules serve both. */
-  --safe-top: env(safe-area-inset-top);
-  --safe-bottom: env(safe-area-inset-bottom);
+  /* — lines and fills — */
+  --line: rgb(234 243 238 / 0.10);
+  --fill: rgb(234 243 238 / 0.05);
+  --fill-2: rgb(234 243 238 / 0.06);
+  --fill-3: rgb(234 243 238 / 0.09);
+  --accent-fill: rgb(95 211 163 / 0.12);
+  --accent-line: rgb(95 211 163 / 0.28);
+  --glow: 0 0 12px rgb(95 211 163 / 0.5);
 
-  --paper: #fbfcfb;
-  --surface: #ffffff;
-  --surface-sunk: #f4f6f4;
-  --ink: #15201a;
-  --ink-2: #576459;
-  --ink-3: #8b978d;
-  --line: #e4e8e5;
-  --line-strong: #d2d8d3;
-  --accent: #14663a;
-  --accent-soft: #e7f2eb;
-  --accent-ink: #0f5230;
-  --warn: #8a5d12;
-  --warn-soft: #f9f1e0;
-  --warn-line: #e7d9bb;
-  --danger: #9d2f2f;
-  --danger-soft: #faecec;
-  --danger-line: #eccfcf;
-  --overlay: rgb(18 24 20 / 0.42);
+  /* — grounds — */
+  --ground-app: radial-gradient(110% 42% at 50% 0%, #14442f 0%, #08130e 52%, #07100c 84%);
+  --ground-welcome: radial-gradient(120% 70% at 50% 0%, #17513c 0%, #0a1a13 46%, #07100c 80%);
+  --ground-step: radial-gradient(120% 60% at 50% 0%, #123f2f 0%, #08130e 55%, #07100c 85%);
+  --ground-card: linear-gradient(158deg, #0f4435 0%, #0b2a20 58%, #091913 100%);
+  --ground-ask: linear-gradient(160deg, #0f4435, #0a201a);
+
+  /* — shape — */
+  --r: 28px;
+  --r2: 18px;
+  --r3: 12px;
+
+  /* — device chrome. Real notches and home bars, not painted ones. — */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #12100e;
-    --surface: #1a1917;
-    --surface-sunk: #221f1d;
-    --ink: #f2efe9;
-    --ink-2: #a8a49c;
-    --ink-3: #7b776f;
-    --line: #2b2926;
-    --line-strong: #3a3733;
-    --accent: #5fbe86;
-    --accent-soft: #17281f;
-    --accent-ink: #7ed3a0;
-    --warn: #d9ab5f;
-    --warn-soft: #2a2318;
-    --warn-line: #453a26;
-    --danger: #e08585;
-    --danger-soft: #2c1c1c;
-    --danger-line: #452b2b;
-    --overlay: rgb(0 0 0 / 0.6);
-  }
-}
+*, *::before, *::after { box-sizing: border-box; }
 
-* { box-sizing: border-box; margin: 0; }
-html { -webkit-text-size-adjust: 100%; }
+html, body, #root { height: 100%; }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
-  /* Instrument Sans for everything functional; the serif is reserved for the
-     two display moments below. Self-hosted, so nothing is fetched at runtime. */
-  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  line-height: 1.5;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  /* Removes the 300ms tap delay and the grey flash — most of what makes a web
-     app feel like a web page rather than an app. */
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  overscroll-behavior-y: contain;
+  text-rendering: optimizeLegibility;
+  /* The app owns the viewport; only its own panes scroll. */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
-/* App shell: content scrolls; action bar and tab bar are pinned. */
-.app {
-  max-width: 30rem;
-  margin: 0 auto;
-  min-height: 100dvh;
-  padding: calc(var(--safe-top) + var(--s3)) var(--s5) 0;
-  padding-bottom: var(--pad-bottom, calc(var(--safe-bottom) + var(--s8)));
-}
-.app--tabbed { --pad-bottom: calc(var(--safe-bottom) + 6rem); }
-.app--acting { --pad-bottom: calc(var(--safe-bottom) + 6.75rem); }
-.app--tabbed.app--acting { --pad-bottom: calc(var(--safe-bottom) + 10rem); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--pale); text-underline-offset: 3px; }
+a:hover { color: #fff; }
 
-/* ------------------------------------------------------------------- type */
-h1 { font-size: 1.75rem; line-height: 1.18; letter-spacing: -0.026em; font-weight: 700; }
-h2 { font-size: 1.05rem; line-height: 1.3; letter-spacing: -0.012em; font-weight: 650; }
-.eyebrow {
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em;
-  text-transform: uppercase; color: var(--ink-3);
-}
-.lede { color: var(--ink-2); line-height: 1.5; }
-.meta { color: var(--ink-2); font-size: 0.85rem; }
-.hint { color: var(--ink-3); font-size: 0.82rem; line-height: 1.45; }
-.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+::selection { background: rgb(95 211 163 / 0.3); }
 
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s3); min-height: var(--tap); margin-bottom: var(--s2);
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-.brand { font-weight: 700; letter-spacing: -0.02em; }
-.brand i { color: var(--accent); font-style: normal; }
 
-/* --------------------------------------------------------------- surfaces */
-.card {
-  background: var(--surface);
+/* Everything that responds to a thumb dips very slightly under it. */
+.tap { transition: transform 0.1s ease, background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease; }
+.tap:active { transform: scale(0.985); }
+@media (prefers-reduced-motion: reduce) {
+  .tap, .tap:active { transition: none; transform: none; }
+  .spin, .scan__line { animation: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────── screens ───── */
+
+.screen {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground-app);
+}
+.screen--welcome { background: var(--ground-welcome); }
+.screen--step { background: var(--ground-step); }
+.screen--flat { background: var(--bg); }
+
+/* Onboarding-shaped padding: content top, action bottom, nothing in between. */
+.screen__pad {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: max(56px, calc(var(--safe-top) + 16px)) 22px calc(42px + var(--safe-bottom));
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}
+
+/* In-app page padding. The tail clears the tab bar; the deeper one also
+   clears an action bar sitting above it. */
+.page { padding: max(56px, calc(var(--safe-top) + 16px)) 14px calc(116px + var(--safe-bottom)); }
+.page--action { padding-bottom: calc(196px + var(--safe-bottom)); }
+.page--full {
+  padding: max(56px, calc(var(--safe-top) + 16px)) 22px calc(42px + var(--safe-bottom));
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.spacer { flex: 1; min-height: 0; }
+.mt1 { margin-top: 6px; } .mt2 { margin-top: 10px; } .mt3 { margin-top: 14px; }
+.mt4 { margin-top: 18px; } .mt5 { margin-top: 26px; }
+
+/* ────────────────────────────────────────────────────────────── type ───── */
+
+.kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mid);
+}
+.kicker--muted { color: var(--muted); }
+.kicker--accent { color: var(--accent); }
+.kicker--faint { color: var(--faint); letter-spacing: 0.08em; }
+
+.display {
+  margin: 0;
+  font-size: 37px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+.display--sm { font-size: 32px; }
+
+.title {
+  margin: 0;
+  font-size: 29px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.title--sm { font-size: 28px; }
+
+.h2 {
+  margin: 0;
+  font-size: 31px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+
+.lede { margin: 0; font-size: 14.5px; color: var(--muted); text-wrap: pretty; }
+.lede--bright { color: var(--body); font-size: 15px; }
+.hint { margin: 0; font-size: 12.5px; color: var(--muted); text-wrap: pretty; line-height: 1.55; }
+.note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; text-wrap: pretty; }
+.warn { margin: 0; font-size: 13px; color: var(--warn); line-height: 1.5; text-wrap: pretty; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-variant-numeric: tabular-nums; word-break: break-all; }
+
+/* ───────────────────────────────────────────────────────────── money ───── */
+
+/* One figure, three sizes inside it: the whole number carries, the cents
+   step back, and anything past two decimals recedes almost out of sight —
+   aTokens accrue, so there is always more precision than anyone wants. */
+.figure {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+}
+.figure__big { font-size: 56px; line-height: 0.94; }
+.figure__cents { font-size: 26px; color: var(--cents); }
+.figure__tail { font-size: 13px; color: var(--faint); align-self: flex-end; padding-bottom: 5px; }
+.figure__unit { font-size: 12px; color: var(--faint); align-self: flex-end; padding: 0 0 5px 6px; }
+
+.figure--md .figure__big { font-size: 44px; line-height: 1; }
+.figure--md .figure__cents { font-size: 20px; }
+
+/* ────────────────────────────────────────────────────────── surfaces ───── */
+
+.balance {
+  padding: 22px;
+  border-radius: var(--r);
+  background: var(--ground-card);
   border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  padding: var(--s5);
-  margin-bottom: var(--s4);
 }
-.card--attention { border-color: var(--warn-line); background: var(--warn-soft); }
-.card > h2 { margin-bottom: var(--s3); }
 
-.row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s3); padding: var(--s3) 0;
-  border-bottom: 1px solid var(--line);
+.tile {
+  padding: 16px;
+  border-radius: var(--r2);
+  background: var(--fill);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
 }
-.row:last-child { border-bottom: 0; padding-bottom: 0; }
-.row__main { min-width: 0; }
-.row__title { font-weight: 600; }
+.tile--pale { background: var(--pale); border-color: transparent; color: var(--ink); }
+.tile--pale .tile__label { color: var(--on-pale); }
+.tile--pale .tile__note { color: var(--on-pale); }
+.tile__label {
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tile__figure {
+  font-weight: 600;
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
+  letter-spacing: -0.03em;
+}
+.tile__note { font-size: 11.5px; color: var(--muted); margin-top: 2px; text-wrap: pretty; }
 
-/* ----------------------------------------------------------------- money */
-.money { display: flex; align-items: baseline; justify-content: center; gap: var(--s2); }
-.money__figure { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
-.money__unit { font-size: 1rem; font-weight: 650; color: var(--ink-2); }
-.money--sm .money__figure { font-size: 1.3rem; letter-spacing: -0.02em; }
-.money--sm .money__unit { font-size: 0.8rem; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-/* -------------------------------------------------------------- controls */
-button, input, select { font: inherit; color: inherit; }
+.panel {
+  padding: 18px 16px;
+  border-radius: var(--r);
+  background: rgb(234 243 238 / 0.04);
+  border: 1px solid var(--line);
+}
+
+.callout {
+  display: flex;
+  gap: 11px;
+  padding: 14px;
+  border-radius: var(--r2);
+  background: rgb(95 211 163 / 0.09);
+  border: 1px solid rgb(95 211 163 / 0.2);
+}
+.callout svg { flex: none; color: var(--accent); margin-top: 1px; }
+
+/* ────────────────────────────────────────────────────────── controls ───── */
 
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
-  min-height: 50px; padding: 0 var(--s5);
-  border: 1px solid transparent; border-radius: var(--r-control);
-  font-size: 1rem; font-weight: 650; cursor: pointer;
-  transition: transform 0.12s ease, background-color 0.18s ease, opacity 0.18s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pale);
+  color: var(--ink);
+  font-size: 15.5px;
+  font-weight: 600;
+  text-decoration: none;
 }
-.btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.45; cursor: default; }
-.btn--block { width: 100%; }
-.btn--primary { background: var(--ink); color: var(--paper); }
-.btn--ask { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
-.btn--sm { min-height: 38px; padding: 0 var(--s3); font-size: 0.88rem; border-radius: 10px; }
-.btn--quiet { background: var(--surface); border-color: var(--line-strong); }
-.btn--go { background: var(--surface); border-color: var(--line-strong); color: var(--accent-ink); }
-.btn--danger { background: var(--surface); border-color: var(--danger-line); color: var(--danger); }
-.btn-pair { display: flex; gap: var(--s2); }
+.btn:disabled { opacity: 0.4; pointer-events: none; }
+.btn--quiet {
+  min-height: 48px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.btn--accent {
+  border: 1px solid rgb(95 211 163 / 0.35);
+  background: none;
+  color: var(--accent);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.btn--sm { min-height: 46px; font-size: 14px; }
+.btn--row { width: auto; flex: 1; }
 
-/* Text-weight alternative — never a second filled button competing with the
-   primary action. */
 .link {
-  background: none; border: 0; padding: var(--s2); min-height: var(--tap);
-  font-size: 0.95rem; font-weight: 650; color: var(--accent);
-  text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px;
-  cursor: pointer;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 500;
 }
-.link:active { color: var(--ink); }
-.center-row { text-align: center; margin-top: var(--s3); color: var(--ink-2); font-size: 0.9rem; }
-.center-row--dim { color: var(--ink-3); font-size: 0.84rem; margin-top: var(--s2); }
+.link--muted { color: var(--muted); }
 
-label { display: block; font-size: 0.85rem; color: var(--ink-2); margin: var(--s4) 0 var(--s2); font-weight: 550; }
-
-input[type="text"], input[type="password"], input[inputmode] {
-  width: 100%; min-height: var(--tap);
-  padding: var(--s3) var(--s4);
-  background: var(--surface); color: var(--ink);
-  border: 1px solid var(--line-strong); border-radius: var(--r-control);
-  /* 1rem minimum — anything smaller and iOS zooms the page on focus. */
-  font-size: 1rem;
+.iconbtn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
 }
-input::placeholder { color: var(--ink-3); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Amount entry, payment-app style: the figure is the interface. */
-.amount {
-  display: flex; align-items: baseline; justify-content: center; gap: var(--s2);
-  padding: var(--s6) 0 var(--s4);
+/* — the chip row: saved payees — */
+.pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 2px; }
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 17px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
 }
-.amount input {
-  font-family: 'Instrument Serif', Georgia, serif;
-  width: auto; min-width: 2ch; max-width: 8ch; min-height: 0;
-  padding: 0; border: 0; background: none; text-align: right;
-  font-size: 3.8rem; font-weight: 400; letter-spacing: -0.012em;
+.pill svg { opacity: 0.75; }
+.pill[aria-pressed='true'] { background: var(--pale); border-color: var(--pale); color: var(--ink); }
+
+/* — the copyable address — */
+.chip {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgb(234 243 238 / 0.04);
+  color: var(--body);
+  padding: 0 16px;
+}
+.chip__addr { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.chip__do { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.chip--static { min-height: 38px; padding: 0 14px; font-size: 12px; }
+.chip--static svg { opacity: 0.7; }
+
+/* — forms — */
+.field { display: block; }
+.field + .field { margin-top: 16px; }
+.field > span {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+  color: var(--muted);
+}
+.input {
+  width: 100%;
+  min-height: 54px;
+  padding: 0 14px;
+  /* 16px minimum: anything smaller and iOS zooms the page on focus. */
+  font-size: 16px;
+  color: var(--text);
+  caret-color: var(--accent);
+  background: var(--fill);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+}
+.input:hover { border-color: rgb(234 243 238 / 0.22); }
+.input:focus-visible { border-color: var(--accent); outline-offset: 0; }
+.input::placeholder { color: var(--faint); }
+
+/* — the recipient row: address in, or scanned — */
+.to { display: flex; gap: 8px; align-items: stretch; }
+.to__box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  min-height: 58px;
+  border-radius: var(--r2);
+  background: var(--fill);
+  border: 1px solid var(--line);
+}
+.to__box:focus-within { border-color: var(--accent); }
+.to__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: 16px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-.amount input:focus { outline: none; }
-.amount__unit { font-size: 1.1rem; font-weight: 650; color: var(--ink-2); }
-
-/* ------------------------------------------------------------------ chips */
-.chips { display: flex; gap: var(--s2); flex-wrap: wrap; }
-.chip {
-  min-height: 40px; padding: 0 var(--s4);
-  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
-  background: var(--surface); color: var(--ink-2);
-  font-size: 0.92rem; font-weight: 550; cursor: pointer;
-  transition: transform 0.12s ease;
+.to__input::placeholder { color: var(--faint); font-weight: 400; }
+.to__clear {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill-3);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
 }
-.chip:active { transform: scale(0.97); }
-.chip[aria-pressed="true"] {
-  background: var(--accent-soft); border-color: var(--accent);
-  color: var(--accent-ink); font-weight: 650;
+.to__scan {
+  width: 58px;
+  flex: none;
+  border-radius: var(--r2);
+  border: 1px solid var(--line);
+  background: var(--accent-fill);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
 }
+.to__resolved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 8px 0;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.to__problem { margin: 10px 8px 0; font-size: 12.5px; color: var(--muted); }
 
-.pill { display: inline-flex; align-items: center; padding: var(--s1) var(--s3); border-radius: var(--r-pill); font-size: 0.74rem; font-weight: 700; }
-.pill--on { background: var(--accent-soft); color: var(--accent-ink); }
-.pill--off { background: var(--danger-soft); color: var(--danger); }
-.pill--wait { background: var(--warn-soft); color: var(--warn); }
+/* — the amount, and the pad that fills it — */
+.amount {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  color: var(--text);
+}
+.amount--empty { color: var(--dim); }
+.amount--over { color: var(--accent); }
+.amount__unit { font-size: 14px; color: var(--faint); align-self: flex-start; padding-top: 9px; }
+.amount__value { font-size: 48px; line-height: 1.1; }
 
-.tags { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
-.tag { padding: var(--s1) var(--s3); border-radius: 8px; background: var(--surface-sunk); border: 1px solid var(--line); font-size: 0.78rem; color: var(--ink-2); }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.key {
+  min-height: 58px;
+  border: 0;
+  border-radius: var(--r2);
+  background: var(--fill-2);
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+.key:active { background: rgb(234 243 238 / 0.12); }
+.key--del { color: var(--muted); }
 
-/* ------------------------------------------------------------- pinned bars */
-.actionbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  padding: var(--s3) var(--s4) calc(var(--safe-bottom) + var(--s3));
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  backdrop-filter: blur(12px);
+/* ─────────────────────────────────────────────────────────────── rows ──── */
+
+.sec {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 8px;
+}
+.sec--top { margin-top: 26px; }
+.sec__pad { padding: 22px 8px 10px; }
+
+.row {
+  display: flex;
+  gap: 12px;
+  padding: 13px 8px;
   border-top: 1px solid var(--line);
 }
-.actionbar__inner { max-width: 30rem; margin: 0 auto; }
-.actionbar--above-tabs { bottom: calc(var(--safe-bottom) + 3.9rem); padding-bottom: var(--s3); }
+.row__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  margin-top: 7px;
+  background: var(--dim);
+}
+.row__dot--live { background: var(--accent); }
+.row__text { font-size: 13.5px; line-height: 1.4; text-wrap: pretty; }
+.row__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.row__tx { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+.row__tx:hover { color: var(--accent); }
+.row__amount {
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cents);
+}
+.row__body { flex: 1; min-width: 0; }
 
-/* A floating pill, not a bar.
-   An edge-to-edge strip of tiny stacked labels is the default web-app look and
-   reads as chrome. This sits inset above the home indicator and only the
-   active tab carries its label — the icon is enough for the other two, and the
-   expanding pill makes the current place unmistakable. */
-.tabbar {
-  position: fixed; z-index: 30;
-  left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + var(--s3));
-  display: flex; align-items: center; gap: var(--s1);
-  padding: 6px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(16px) saturate(140%);
+.person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 16px;
+  min-height: 66px;
+  border-radius: var(--r2);
+  background: var(--fill);
   border: 1px solid var(--line);
-  box-shadow: 0 12px 28px -14px rgb(18 24 20 / 0.4), 0 2px 6px -2px rgb(18 24 20 / 0.12);
+  text-align: left;
+}
+.person:hover { background: var(--fill-2); }
+.person__name { font-weight: 600; font-size: 15px; }
+.person__status { font-size: 12.5px; margin-top: 2px; color: var(--muted); }
+.person__status--off { color: var(--faint); }
+.person > svg:last-child { color: var(--faint); flex: none; }
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--pale);
+  color: var(--ink);
+  border: 1px solid transparent;
+}
+.avatar--off { background: transparent; color: var(--muted); border-color: var(--line); }
+.avatar--sm { width: 34px; height: 34px; font-size: 14px; }
+.avatar--xs { width: 30px; height: 30px; font-size: 12.5px; background: var(--fill-2); color: var(--body); border-color: var(--line); }
+.avatar--lg { width: 58px; height: 58px; font-size: 22px; }
+
+.tag {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgb(234 243 238 / 0.08);
+  color: var(--muted);
+}
+.tag--waiting {
+  padding: 4px 10px;
+  border: 1px solid rgb(95 211 163 / 0.4);
+  background: none;
+  color: var(--accent);
+}
+
+/* — the label/value list every detail sheet is made of — */
+.dl { display: block; }
+.dl__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+}
+.dl__row dt { color: var(--muted); }
+.dl__row dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.dl__row--edge { border-bottom: 1px solid var(--line); font-size: 13px; }
+
+.ask {
+  padding: 18px;
+  border-radius: var(--r);
+  background: var(--ground-ask);
+  border: 1px solid var(--accent-line);
+}
+.ask + .ask { margin-top: 10px; }
+.ask__text { font-size: 15px; line-height: 1.4; text-wrap: pretty; }
+.ask__at { font-size: 11.5px; margin-top: 4px; color: var(--muted); }
+.ask__do { display: flex; gap: 8px; margin-top: 14px; }
+
+.empty {
+  padding: 18px;
+  border-radius: var(--r2);
+  background: var(--fill);
+  font-size: 13px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.empty--bare { padding: 14px 8px; background: none; }
+
+.markbox {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r2);
+  background: var(--fill-2);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.markbox--accent {
+  width: 92px;
+  height: 92px;
+  background: rgb(95 211 163 / 0.1);
+  border-color: rgb(95 211 163 / 0.25);
+  color: var(--accent);
+}
+.markbox--round {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: none;
+  border-color: rgb(95 211 163 / 0.35);
+  color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────────── navigation ───────── */
+
+/* A floating pill, not a bar welded to the bottom edge. The active tab is the
+   only one that says its name — the rest are recognised by shape. */
+.tabbar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(26px + var(--safe-bottom));
+  display: flex;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgb(10 26 20 / 0.82);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 30;
 }
 .tab {
-  position: relative;
-  display: inline-flex; align-items: center; gap: var(--s2);
-  height: 44px; padding: 0 var(--s4);
-  border: 0; border-radius: var(--r-pill);
-  background: none; color: var(--ink-3); cursor: pointer;
-  font-size: 0.88rem; font-weight: 600; letter-spacing: -0.005em;
-  transition: background-color 0.22s ease, color 0.22s ease, padding 0.22s ease;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
-.tab svg { width: 21px; height: 21px; flex: none; }
-.tab__label {
-  max-width: 0; overflow: hidden; white-space: nowrap;
-  opacity: 0; transition: max-width 0.24s ease, opacity 0.18s ease;
-}
-.tab[aria-selected="true"] {
-  background: var(--ink); color: var(--paper);
-}
-.tab[aria-selected="true"] .tab__label { max-width: 6rem; opacity: 1; }
-.tab:active { transform: scale(0.97); }
-
+.tab--on { background: var(--pale); color: var(--ink); }
 .tab__badge {
-  position: absolute; top: 8px; right: 9px;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--warn);
-  box-shadow: 0 0 0 2px var(--surface);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 10.5px;
 }
-.tab[aria-selected="true"] .tab__badge { box-shadow: 0 0 0 2px var(--ink); }
+.tab--on .tab__badge { background: var(--ink); color: var(--pale); }
 
-@media (prefers-reduced-motion: reduce) {
-  .tab, .tab__label { transition: none; }
+/* The commit button, held above the tab bar and fading the page out under it. */
+.actionbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(78px + var(--safe-bottom));
+  padding: 24px 14px 12px;
+  background: linear-gradient(to top, var(--bg) 62%, rgb(7 16 12 / 0));
+  z-index: 30;
+}
+.actionbar .btn { min-height: 56px; font-size: 16px; }
+.actionbar__hint { margin: 0 8px 10px; font-size: 12px; line-height: 1.45; color: var(--warn); text-wrap: pretty; }
+/* Over the limit the button never dies — it changes what it promises. */
+.btn--ask {
+  background: transparent;
+  border: 1px solid rgb(95 211 163 / 0.45);
+  color: var(--accent);
 }
 
-/* ------------------------------------------------------------ bottom sheet */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: var(--overlay); animation: fade 0.18s ease; }
+/* ─────────────────────────────────────────────────────────── sheets ───── */
+
+.veil {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: var(--scrim);
+  animation: fade 0.16s ease;
+}
+.veil--auth { z-index: 80; background: rgb(3 8 6 / 0.7); }
+.veil--op { z-index: 90; display: grid; place-items: center; padding: 20px; background: var(--scrim-deep); }
+.veil--over { z-index: 95; background: #040a07; justify-content: flex-start; }
+
 .sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
-  max-width: 30rem; margin: 0 auto;
-  background: var(--surface);
-  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  border: 1px solid var(--line); border-bottom: 0;
-  padding: var(--s3) var(--s5) calc(var(--safe-bottom) + var(--s5));
-  max-height: 88dvh; overflow-y: auto;
-  animation: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--sheet);
+  border-radius: var(--r) var(--r) 0 0;
+  border-top: 1px solid var(--line);
+  padding: 16px 20px calc(40px + var(--safe-bottom));
+  max-height: 100%;
+  overflow-y: auto;
+  animation: rise 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.sheet__grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto var(--s4); }
-.sheet__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s2); }
-@keyframes rise { from { transform: translateY(8%); opacity: 0.5; } }
+.sheet__grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(234 243 238 / 0.18);
+  margin: 0 auto 18px;
+}
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.sheet__title { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+.sheet__head--person { align-items: center; gap: 14px; }
+.sheet__head--person .sheet__title { flex: 1; }
+
+.modal {
+  width: 100%;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 22px;
+  animation: pop 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @keyframes fade { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .sheet, .sheet-backdrop { animation: none; }
-  .btn:active:not(:disabled), .chip:active { transform: none; }
+@keyframes rise { from { transform: translateY(14%); } }
+@keyframes pop { from { transform: scale(0.97); opacity: 0; } }
+
+/* ──────────────────────────────────────────────── work in progress ────── */
+
+/* On-chain operations take fifteen to thirty seconds. That is block time, not
+   slowness, and it is far too long for a spinner inside a button — so the
+   work gets a surface, and the surface names each step as it lands. */
+.steps { display: block; }
+.step { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.step__mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--dim);
+  background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
+.step--done .step__mark { border-color: var(--accent); background: var(--accent); box-shadow: var(--glow); }
+.step--failed .step__mark { border-color: var(--accent); }
+.step__label { font-size: 13.5px; flex: 1; color: var(--muted); }
+.step--done .step__label, .step--failed .step__label { color: var(--text); }
 
-/* ---------------------------------------------------------------- feedback */
-.note { padding: var(--s3) var(--s4); border-radius: var(--r-control); font-size: 0.9rem; margin-top: var(--s3); border: 1px solid transparent; }
-.note--ok { background: var(--accent-soft); color: var(--accent-ink); }
-.note--wait { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); display: flex; align-items: center; gap: var(--s2); }
-.note--err { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
-
-.fee { margin-top: var(--s4); border: 1px solid var(--line); border-radius: var(--r-control); overflow: hidden; background: var(--surface-sunk); }
-.fee__main { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2); padding: var(--s3) var(--s4); font-size: 0.86rem; color: var(--ink-2); }
-.fee__main b { color: var(--ink); }
-.fee__aside { font-size: 0.76rem; color: var(--ink-3); }
-.fee__steps { margin: 0; padding: var(--s2) var(--s4) var(--s3) calc(var(--s4) + 1.1rem); border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--ink-2); }
-.fee--warn { background: var(--warn-soft); border-color: var(--warn-line); }
-.fee--warn .fee__main { color: var(--warn); }
-
-.spinner {
-  display: inline-block; width: 15px; height: 15px; flex: none;
-  border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-top-color: currentColor; border-radius: 50%;
+.spin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--dim);
+  border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Skeletons, not spinners, for content that has a known shape. */
-.skel { background: var(--surface-sunk); border-radius: 8px; animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.55; } }
-@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
-
-/* ----------------------------------------------------------------- content */
-.steps { counter-reset: s; list-style: none; margin: 0 0 var(--s6); padding: 0; }
-.steps li { counter-increment: s; position: relative; padding: 0 0 var(--s4) var(--s8); color: var(--ink-2); }
-.steps li b { color: var(--ink); font-weight: 650; }
-.steps li::before {
-  content: counter(s); position: absolute; left: 0; top: 1px;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--accent-soft); color: var(--accent-ink);
-  font-size: 0.72rem; font-weight: 700; display: grid; place-items: center;
+/* — the QR overlay — */
+.scan { flex: 1; display: grid; place-items: center; padding: 0 20px; }
+.scan__head {
+  padding: max(56px, calc(var(--safe-top) + 16px)) 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
-
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem; color: var(--ink-2); word-break: break-all; }
-.linkbox { margin-top: var(--s3); padding: var(--s3); background: var(--surface-sunk); border: 1px dashed var(--line-strong); border-radius: 10px; }
-details.perm { margin-top: var(--s3); }
-details.perm summary { list-style: none; cursor: pointer; min-height: 32px; font-size: 0.78rem; color: var(--ink-3); display: flex; align-items: center; gap: var(--s1); }
-details.perm summary::-webkit-details-marker { display: none; }
-details.perm summary::before { content: "⌗"; }
-details.perm[open] summary { color: var(--accent-ink); }
-details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); background: var(--surface-sunk); border-radius: 10px; }
-
-.empty { text-align: center; padding: var(--s10) var(--s4); }
-.empty__mark { width: 46px; height: 46px; margin: 0 auto var(--s3); display: grid; place-items: center; border-radius: 50%; background: var(--surface-sunk); color: var(--ink-3); }
-.txlink { color: var(--ink-3); font-size: 0.78rem; text-decoration: none; padding: var(--s2); }
-.txlink:active { color: var(--accent); }
-.stack > * + * { margin-top: var(--s3); }
-.mt2 { margin-top: var(--s2); }
-.mt4 { margin-top: var(--s4); }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-
-/* ======================================================================
-   The ledger panel.
-
-   Money apps put the balance on a card, not in a box on a page — it is
-   the one object you are meant to feel you own. So the figure lives on
-   a near-black panel and everything else on the page goes flat and
-   quiet around it. One dominant element per screen, then hairlines.
-   ====================================================================== */
-
-.panel {
+.scan__box {
   position: relative;
-  border-radius: 20px;
-  padding: var(--s5);
-  background: linear-gradient(158deg, #1b2620 0%, #121a15 58%, #16211b 100%);
-  color: #f4f6f4;
+  width: 246px;
+  height: 246px;
+  border-radius: var(--r);
+  background: radial-gradient(120% 120% at 50% 0%, #123f2f, #07100c 72%);
   overflow: hidden;
 }
-.panel::after {
-  /* A single soft highlight, so the surface reads as a material rather
-     than a flat fill. No gradient wash. */
-  content: ""; position: absolute; inset: 0;
-  background: radial-gradient(120% 90% at 82% -10%, rgb(95 190 134 / 0.16), transparent 58%);
+.scan__box video { width: 100%; height: 100%; object-fit: cover; }
+.scan__corner { position: absolute; width: 44px; height: 44px; }
+.scan__corner--tl { left: 0; top: 0; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: var(--r) 0 0 0; }
+.scan__corner--tr { right: 0; top: 0; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 var(--r) 0 0; }
+.scan__corner--bl { left: 0; bottom: 0; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: 0 0 0 var(--r); }
+.scan__corner--br { right: 0; bottom: 0; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 0 var(--r) 0; }
+.scan__line {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 50%;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 18px rgb(95 211 163 / 0.8);
+  animation: sweep 1.7s ease-in-out infinite;
+}
+.scan__foot {
+  padding: 0 24px calc(56px + var(--safe-bottom));
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+@keyframes sweep {
+  0%, 100% { transform: translateY(-88px); }
+  50% { transform: translateY(88px); }
+}
+
+/* — the week, as a ring — */
+.ring { position: relative; display: flex; justify-content: center; padding: 18px 0 4px; }
+.ring svg { display: block; transform: rotate(-90deg); }
+.ring__track { fill: none; stroke: var(--line); stroke-width: 14; }
+.ring__arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 14;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.ring__mid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Soft green shapes behind things, so a screen is never only rectangles. */
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #7fe3ba, #1c7050);
   pointer-events: none;
 }
-.panel__label {
-  display: flex; align-items: center; gap: var(--s2);
-  font-size: 0.72rem; font-weight: 650; letter-spacing: 0.08em;
-  text-transform: uppercase; color: rgb(244 246 244 / 0.52);
-}
-.panel__figure {
-  /* A high-contrast serif on the balance. Nobody does this in fintech, which
-     is exactly why it reads as considered rather than templated — and
-     Instrument Serif's figures are the best thing about it. */
-  font-family: 'Instrument Serif', Georgia, serif;
-  margin-top: var(--s3);
-  font-size: 3.4rem; font-weight: 400; letter-spacing: -0.02em; line-height: 0.95;
-  font-variant-numeric: tabular-nums;
-}
-.panel__figure span {
-  font-family: 'Instrument Sans', sans-serif;
-  font-size: 0.95rem; font-weight: 650; color: rgb(244 246 244 / 0.55); margin-left: var(--s2);
-}
-.panel__foot {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4);
-  margin-top: var(--s5); padding-top: var(--s4);
-  border-top: 1px solid rgb(244 246 244 / 0.1);
-}
-.panel__stat b {
-  display: block; font-size: 0.98rem; font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
-.panel__stat span {
-  display: block; margin-top: 1px;
-  font-size: 0.72rem; color: rgb(244 246 244 / 0.5);
+.blob::after {
+  content: '';
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background: linear-gradient(150deg, #9beed0, #2c8a68);
 }
 
-/* Flat list rows — the rest of the page. No card chrome. */
-.list { display: flex; flex-direction: column; }
-.list__item {
-  display: flex; align-items: center; gap: var(--s3);
-  min-height: 60px; padding: var(--s3) 0;
-  border-bottom: 1px solid var(--line);
-  background: none; border-left: 0; border-right: 0; border-top: 0;
-  width: 100%; text-align: left; cursor: pointer;
-  transition: opacity 0.15s ease;
+/* — the toast that confirms a copy — */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(96px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--pale);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: rise 0.2s ease;
 }
-.list__item:last-child { border-bottom: 0; }
-.list__item:active { opacity: 0.6; }
-.list__body { flex: 1; min-width: 0; }
-.list__title { font-weight: 600; letter-spacing: -0.005em; }
-.list__sub { font-size: 0.82rem; color: var(--ink-2); margin-top: 1px; }
-.list__end { display: flex; align-items: center; gap: var(--s2); flex: none; }
-.chev { color: var(--ink-3); flex: none; }
 
-/* An initial, not a photo — nobody uploads one for a demo. */
-.avatar {
-  width: 38px; height: 38px; flex: none;
-  display: grid; place-items: center; border-radius: 50%;
-  background: var(--accent-soft); color: var(--accent-ink);
-  font-weight: 700; font-size: 0.92rem;
+/* — loading, in the shape of what is coming — */
+.skel {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--fill) 25%, var(--fill-3) 37%, var(--fill) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
 }
-.avatar--off { background: var(--surface-sunk); color: var(--ink-3); }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
-/* Section heading that isn't a card header. */
-.section {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: var(--s3); margin: var(--s6) 0 var(--s1);
-}
-.section h2 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+/* ──────────────────────────────────────────────── the desktop frame ───── */
 
-/* The (i): detail on demand, so the screen carries none of it. */
-.info {
-  width: 26px; height: 26px; flex: none; padding: 0;
-  display: grid; place-items: center; border-radius: 50%;
-  background: none; border: 1px solid var(--line-strong);
-  color: var(--ink-3); cursor: pointer; font-size: 0.72rem; font-weight: 700;
-}
-.info:active { background: var(--surface-sunk); }
-.panel .info { border-color: rgb(244 246 244 / 0.22); color: rgb(244 246 244 / 0.65); }
+/* On a phone this is nothing at all. On a desktop the app sits in a handset,
+   because it is designed for a thumb and looks wrong stretched wide. */
+.stage { height: 100%; }
+.device { height: 100%; }
+.device__screen { height: 100%; overflow: hidden; position: relative; }
+.device__island, .stage__aside { display: none; }
 
-.dl { margin: 0; }
-.dl__row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
-.dl__row:last-child { border-bottom: 0; }
-.dl__row dt { font-size: 0.85rem; color: var(--ink-2); }
-.dl__row dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
-
-/* ==========================================================================
-   Desktop: put the app in a handset.
-
-   Below the breakpoint the frame does not exist and the app owns the viewport
-   — a phone should never render a picture of a phone. Above it, the app is a
-   handset on a stage, because a thumb-first layout stretched across a monitor
-   reads as a broken website rather than a considered app.
-
-   The frame is sized from the viewport, not fixed: it takes the smaller of a
-   real handset's height and what the window can show, and derives its width
-   from the aspect ratio. So it fits a 13" laptop and a tall monitor without a
-   scrollbar or a cropped device.
-   ========================================================================== */
-
-.stage { display: contents; }
-
-@media (min-width: 48rem) {
-  body { background: var(--surface-sunk); }
-
+@media (min-width: 48rem) and (min-height: 40rem) {
+  body { background: #050b08; }
   .stage {
-    display: grid;
-    place-items: center;
-    min-height: 100dvh;
-    padding: var(--s6);
-  }
-
-  .device {
-    /* Load-bearing, not cosmetic: a transformed ancestor becomes the
-       containing block for fixed-position descendants, which is what keeps the
-       app's action bar, tab bar and bottom sheets pinned inside the device
-       instead of escaping to the browser viewport. */
-    transform: translateZ(0);
-    position: relative;
-    /* 390x844 at most, shrinking with the window. */
-    height: min(844px, 92dvh);
-    aspect-ratio: 390 / 844;
-    width: auto;
-    padding: 12px;
-    border-radius: 58px;
-    background: linear-gradient(168deg, #46433f, #161514 44%, #35322e);
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.55),
-      0 50px 90px -26px rgb(15 20 17 / 0.5),
-      inset 0 0 0 2px rgb(255 255 255 / 0.07);
-  }
-  /* Side buttons — the detail that stops a rounded rectangle reading as a
-     rounded rectangle. */
-  .device::before,
-  .device::after {
-    content: ""; position: absolute; width: 3px; border-radius: 2px;
-    background: linear-gradient(180deg, #3a3733, #23211f);
-  }
-  .device::before { left: -3px; top: 168px; height: 64px; }
-  .device::after { right: -3px; top: 150px; height: 104px; }
-
-  .device__screen {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    border-radius: 46px;
-    overflow: hidden;
-    overflow-y: auto;
-    background: var(--paper);
-    -webkit-overflow-scrolling: touch;
-    /* The frame supplies what a handset's insets would, so one set of layout
-       rules serves both. */
-    --safe-top: 34px;
-    --safe-bottom: 20px;
-  }
-  /* Fill the screen, scroll past it — never a fixed pixel height, or the app
-     would be cut off in a shorter frame. */
-  .device__screen .app { min-height: 100%; }
-
-  .device__island {
-    position: absolute;
-    top: 21px; left: 50%; transform: translateX(-50%);
-    width: 106px; height: 30px;
-    border-radius: var(--r-pill);
-    background: #0b0a09;
-    z-index: 50;
-    pointer-events: none;
-  }
-
-  /* Fixed children resolve against the device now, but they still have to
-     respect its rounded screen. */
-  .device__screen .tabbar,
-  .device__screen .actionbar { max-width: none; }
-  .device__screen .sheet { border-radius: var(--r-sheet) var(--r-sheet) 46px 46px; }
-  /* Home indicator, drawn on the bezel rather than inside the app — the app
-     itself must not paint fake system chrome. */
-  .device__screen::after {
-    content: ""; position: fixed; bottom: 8px; left: 50%;
-    transform: translateX(-50%); z-index: 60;
-    width: 134px; height: 5px; border-radius: 3px;
-    background: color-mix(in srgb, var(--ink) 32%, transparent);
-    pointer-events: none;
-  }
-
-  .stage__aside { display: none; }
-}
-
-/* Room for the aside only once the window is genuinely wide. */
-@media (min-width: 62rem) {
-  .stage {
-    grid-template-columns: auto minmax(0, 19rem);
-    gap: var(--s10);
-    place-items: center;
+    display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 4vw;
+    padding: 3vh 4vw;
   }
-  .stage__aside { display: block; color: var(--ink-2); }
-  .stage__brand { font-family: 'Instrument Serif', Georgia, serif; font-size: 1.9rem; font-weight: 400; letter-spacing: -0.01em; color: var(--ink); }
-  .stage__brand i { color: var(--accent); font-style: normal; }
-  .stage__line { margin-top: var(--s2); font-size: 1.05rem; line-height: 1.45; color: var(--ink); }
-  .stage__hint { margin-top: var(--s4); font-size: 0.9rem; line-height: 1.5; }
-  .stage__url {
-    margin-top: var(--s3); padding: var(--s2) var(--s3);
-    display: inline-block; border-radius: 8px;
-    background: var(--surface); border: 1px solid var(--line);
-    font-size: 0.8rem; color: var(--ink);
+  .device {
+    /* Height-led, so the whole phone always fits the window. */
+    height: min(92vh, 874px);
+    aspect-ratio: 402 / 874;
+    flex: none;
+    border-radius: 48px;
+    padding: 0;
+    position: relative;
+    background: #000;
+    box-shadow:
+      0 0 0 10px #14201a,
+      0 0 0 11px rgb(234 243 238 / 0.10),
+      0 40px 90px rgb(0 0 0 / 0.55);
+    /* The transform makes this the containing block for the fixed and
+       absolute children inside — which is what keeps sheets, the tab bar and
+       the action bar inside the handset instead of escaping to the window. */
+    transform: translateZ(0);
   }
+  .device__screen { border-radius: 38px; }
+  .device__island {
+    display: block;
+    position: absolute;
+    top: 11px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 30px;
+    border-radius: 24px;
+    background: #000;
+    z-index: 50;
+  }
+  /* No painted status bar or keyboard: the real ones render on top. */
 }
 
-/* A short, wide window (a laptop in landscape) — give the device the height
-   back by dropping the stage padding rather than cropping it. */
-@media (min-width: 48rem) and (max-height: 46rem) {
-  .stage { padding: var(--s3); }
-  .device { height: min(844px, 96dvh); border-radius: 44px; }
-  .device__screen { border-radius: 36px; }
-  .device__island { top: 16px; height: 26px; width: 92px; }
+@media (min-width: 62rem) and (min-height: 40rem) {
+  .stage__aside {
+    display: block;
+    max-width: 22rem;
+    color: var(--text);
+  }
+  .stage__mark { color: var(--accent); margin-bottom: 18px; }
+  .stage__brand { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.03em; }
+  .stage__line { margin: 10px 0 0; font-size: 15px; color: var(--muted); text-wrap: pretty; }
+  .stage__hint { margin: 18px 0 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
+  .stage__url { margin: 6px 0 0; font-size: 12.5px; color: var(--accent); }
 }
-
-/* On an actual phone the frame must not exist. The device styles live only
-   inside the breakpoints above, so .device and .device__screen are already
-   plain boxes here — only the decorative parts need removing, and the aside
-   would otherwise leak its copy under the app. */
-@media (max-width: 47.99rem) {
-  .device__island, .stage__aside { display: none; }
-}
-
-/* — transaction progress — */
-.job { text-align: center; padding-bottom: var(--s2); }
-.job__mark {
-  width: 52px; height: 52px; margin: var(--s2) auto var(--s4);
-  display: grid; place-items: center; border-radius: 50%;
-}
-.job__mark svg { width: 26px; height: 26px; }
-.job__mark--running { background: var(--surface-sunk); color: var(--ink-2); }
-.job__mark--done { background: var(--accent-soft); color: var(--accent-ink); }
-.job__mark--failed { background: var(--danger-soft); color: var(--danger); }
-.job__line { font-size: 1.02rem; font-weight: 550; line-height: 1.4; }
-.job .hint { margin-top: var(--s2); }
-.job .dl, .job .btn { text-align: left; }
-.job .btn { text-align: center; }
-
-/* — first run —
-   Show the product rather than describe it: two real cards from the app,
-   stacked and tilted, over a soft wash. Then one centred claim, one line of
-   support, and the way in. */
-.app--splash {
-  display: flex; flex-direction: column; min-height: 100dvh;
-  background:
-    radial-gradient(120% 60% at 50% 0%, var(--accent-soft) 0%, transparent 62%),
-    var(--paper);
-}
-.splash { flex: 1; display: flex; flex-direction: column; text-align: center; }
-
-.preview {
-  position: relative; height: 208px; margin: var(--s5) 0 var(--s8);
-  perspective: 900px;
-}
-.preview__card {
-  position: absolute; left: 50%; width: 264px;
-  padding: var(--s4); border-radius: 16px; text-align: left;
-  background: var(--surface); border: 1px solid var(--line);
-  box-shadow: 0 18px 34px -22px rgb(18 24 20 / 0.45);
-}
-.preview__card--back {
-  top: 0; transform: translateX(-50%) rotate(-3.2deg);
-  opacity: 0.94;
-}
-.preview__card--front {
-  top: 88px; transform: translateX(-50%) rotate(2.4deg);
-  background: linear-gradient(156deg, #1b2620, #121a15);
-  border-color: transparent; color: #f4f6f4;
-}
-.preview__row { display: flex; align-items: center; gap: var(--s3); }
-.preview__avatar {
-  width: 34px; height: 34px; flex: none; border-radius: 50%;
-  display: grid; place-items: center; font-weight: 700; font-size: 0.85rem;
-}
-.preview__name { font-weight: 650; font-size: 0.92rem; }
-.preview__sub { font-size: 0.76rem; color: var(--ink-3); margin-top: 1px; }
-.preview__pill {
-  margin-left: auto; padding: 2px 9px; border-radius: var(--r-pill);
-  background: var(--accent-soft); color: var(--accent-ink);
-  font-size: 0.7rem; font-weight: 700;
-}
-.preview__label {
-  font-size: 0.68rem; font-weight: 650; letter-spacing: 0.08em;
-  text-transform: uppercase; color: rgb(244 246 244 / 0.5);
-}
-.preview__figure {
-  font-family: 'Instrument Serif', Georgia, serif;
-  margin-top: var(--s2);
-  font-size: 2.2rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.preview__figure span { font-family: 'Instrument Sans', sans-serif; font-size: 0.78rem; font-weight: 650; color: rgb(244 246 244 / 0.5); margin-left: 6px; }
-.preview__bar {
-  margin-top: var(--s4); height: 5px; border-radius: 3px;
-  background: rgb(244 246 244 / 0.14); overflow: hidden;
-}
-.preview__bar i { display: block; width: 62%; height: 100%; border-radius: 3px; background: var(--accent); }
-
-.splash__word {
-  font-family: 'Instrument Serif', Georgia, serif;
-  font-size: 2.5rem; font-weight: 400; letter-spacing: -0.014em; line-height: 1.08;
-  text-wrap: balance;
-}
-.splash__line {
-  margin: var(--s3) auto 0; max-width: 30ch;
-  font-size: 1rem; line-height: 1.5; color: var(--ink-2); text-wrap: pretty;
-}
-.splash__foot { margin-top: auto; padding-bottom: var(--s4); }
-.btn--lg { min-height: 56px; font-size: 1.05rem; border-radius: 15px; }
-.stage__mark { color: var(--accent); margin-bottom: var(--s3); }
-
-.panel__note {
-  margin-top: var(--s3); font-size: 0.78rem;
-  color: rgb(244 246 244 / 0.5);
-}
-
-/* A section that pairs one figure with its one action. */
-.tile {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s4); padding: var(--s4) 0;
-}
-.tile__figure {
-  font-size: 1.6rem; font-weight: 700; letter-spacing: -0.028em;
-}
-.tile__figure span { font-size: 0.82rem; font-weight: 650; color: var(--ink-2); margin-left: 5px; }
-
-/* Activity marks — a wallet reads by shape before it reads by word. */
-.dot {
-  width: 9px; height: 9px; flex: none; border-radius: 50%;
-  background: var(--ink-3); margin: 0 var(--s1);
-}
-.dot--deposit, .dot--approved { background: var(--accent); }
-.dot--payment { background: var(--ink-2); }
-.dot--ask { background: var(--warn); }
-.dot--revoke, .dot--denied { background: var(--danger); }
-.dot--allowance { background: var(--accent-ink); }
-
-.link--sm { font-size: 0.8rem; min-height: auto; padding: 0; text-decoration: none; }
-.link--block { display: block; width: 100%; text-align: center; text-decoration: none; color: var(--ink-2); font-weight: 600; }
-.link--block:active { color: var(--ink); }
-
-.tile .hint { margin-top: 2px; }
-
-/* The address, where a wallet keeps it: under the balance, shortened, and one
-   tap from the clipboard. */
-.addr {
-  display: inline-flex; align-items: center; gap: var(--s2);
-  margin-top: var(--s4); padding: 7px var(--s3);
-  border-radius: var(--r-pill);
-  background: rgb(244 246 244 / 0.09);
-  border: 1px solid rgb(244 246 244 / 0.12);
-  color: rgb(244 246 244 / 0.75);
-  cursor: pointer; font-size: 0.78rem;
-  transition: background-color 0.18s ease;
-}
-.addr:active { background: rgb(244 246 244 / 0.16); }
-.addr svg { width: 15px; height: 15px; flex: none; }
-.addr .mono { color: inherit; font-size: 0.78rem; }

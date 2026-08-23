@@ -6,10 +6,10 @@ import { Mark } from './ui'
  * handset-sized frame, because the app is designed for a thumb and looks wrong
  * stretched across a monitor.
  *
- * The frame carries a `transform` in CSS, which makes it the containing block
- * for its fixed-position descendants — that's what keeps the action bar, tab
- * bar and bottom sheets pinned inside the device instead of escaping to the
- * browser viewport.
+ * Nothing inside positions against the window: each screen is the containing
+ * block for its own tab bar, action bar and sheets, so they stay inside the
+ * handset here and inside the viewport on a phone without either case being a
+ * special one.
  */
 export function Device({ children }: { children: ReactNode }) {
   return (
@@ -23,10 +23,10 @@ export function Device({ children }: { children: ReactNode }) {
           real thing is a phone, and how to get there. */}
       <aside className="stage__aside">
         <div className="stage__mark"><Mark size={40} /></div>
-        <p className="stage__brand">kin</p>
+        <p className="stage__brand">Kin</p>
         <p className="stage__line">Pocket money with limits the network enforces.</p>
         <p className="stage__hint">Built for a phone — open this address on yours to use Face ID.</p>
-        <p className="stage__url mono">{location.host}</p>
+        <p className="stage__url num">{location.host}</p>
       </aside>
     </div>
   )

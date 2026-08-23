@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
-
+import { Blob, Icon } from '../components/ui'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
 /**
- * First run. One decision per screen, and exactly one primary button on each —
- * the alternative is always a quiet text link underneath, never a second
- * button that competes with it.
+ * First run. One decision per screen, and exactly one filled button on each —
+ * the alternative is always a quiet outlined one underneath, never a second
+ * button competing for the same attention.
  *
- * Setting up a family finishes in one pass: name it, then create the account.
- * The invite link is how *other people* join; the person starting the family
- * never has to touch one.
+ * Setting up a household finishes in one pass: name it, then make the account.
+ * Invite links are how *other people* join; whoever starts it never sees one.
  */
 export default function Onboarding({ onReady }: { onReady: () => void }) {
   const [step, setStep] = useState<Step>('welcome')
@@ -26,7 +25,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
 
   const go = (s: Step) => { setErr(''); setUsePassphrase(false); setStep(s) }
 
-  /** Reserve the family, keep its setup token, and move on to securing it. */
+  /** Reserve the household, keep its setup token, and move on to securing it. */
   const nameFamily = async () => {
     setErr(''); setBusy(true)
     try {
@@ -34,7 +33,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       setToken(r.joinPath.split('/').pop()!)
       setStep('secure')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not start the family.')
+      setErr(e instanceof Error ? e.message : 'Could not start the household.')
     } finally { setBusy(false) }
   }
 
@@ -86,141 +85,186 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
     } finally { setBusy(false) }
   }
 
-  return (
-    <div className={step === 'welcome' ? 'app app--splash' : 'app'}>
-      {step !== 'welcome' && <header className="topbar"><span className="brand">kin<i>.</i></span></header>}
+  /* ── welcome ───────────────────────────────────────────────────────────── */
+  if (step === 'welcome') {
+    return (
+      <div className="screen screen--welcome">
+        <div className="screen__pad">
+          <div className="kicker">Kin</div>
 
-      {step === 'welcome' && (
-        <div className="splash">
-          {/* Show the thing, don't describe it: two cards from the real app,
-              stacked and tilted the way they'd sit in a hand. */}
-          <div className="preview" aria-hidden="true">
-            <div className="preview__card preview__card--back">
-              <div className="preview__row">
-                <span className="preview__avatar" style={{ background: '#e7f2eb', color: '#0f5230' }}>S</span>
-                <div>
-                  <div className="preview__name">Sam</div>
-                  <div className="preview__sub">42 left this week</div>
-                </div>
-                <span className="preview__pill">on</span>
+          {/* Show the thing rather than describe it: two cards lifted out of
+              the real app, tilted the way they'd sit in a hand. */}
+          <div style={{ marginTop: 26, position: 'relative', height: 212 }} aria-hidden="true">
+            <Blob size={62} right={8} top={-20} rotate={-18} opacity={0.42} />
+            <Blob size={40} right={74} top={56} rotate={14} opacity={0.34} />
+            <Blob size={48} left={-6} bottom={-10} rotate={-26} opacity={0.34} />
+
+            <div className="balance" style={{ position: 'absolute', left: 0, top: 0, right: 30, padding: 20 }}>
+              <div className="kicker" style={{ fontSize: 10 }}>Balance</div>
+              <div className="figure" style={{ marginTop: 10 }}>
+                <span className="figure__big" style={{ fontSize: 42, lineHeight: 1 }}>499</span>
+                <span className="figure__cents" style={{ fontSize: 20, color: 'var(--muted)' }}>.99</span>
+              </div>
+              <div className="note" style={{ marginTop: 8, fontSize: 11 }}>USDT · earning in Aave</div>
+            </div>
+
+            <div
+              style={{
+                position: 'absolute', left: 52, top: 130, right: 0, padding: '14px 16px',
+                borderRadius: 'var(--r2)', background: 'var(--pale)',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}
+            >
+              <span className="avatar avatar--sm" style={{ background: 'var(--deep)', color: 'var(--pale)' }}>M</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>Maya</div>
+                <div style={{ fontSize: 11, color: 'var(--on-pale)' }}>13.60 USDT left this week</div>
               </div>
             </div>
-
-            <div className="preview__card preview__card--front">
-              <div className="preview__label">Family balance</div>
-              <div className="preview__figure">500<span>USD₮</span></div>
-              <div className="preview__bar"><i /></div>
-            </div>
           </div>
 
-          <h1 className="splash__word">Pocket money that can&rsquo;t go wrong</h1>
-          <p className="splash__line">
-            One balance the family shares. You set what each person can spend, and the
-            limits hold on their own.
+          <div className="spacer" />
+
+          <h1 className="display">Pocket money that can&rsquo;t go wrong.</h1>
+          <p className="lede mt3" style={{ marginBottom: 22 }}>
+            One balance for the house. You set what each person can spend, and the
+            limits hold whether or not anyone is watching.
           </p>
 
-          <div className="splash__foot">
-            <button className="btn btn--primary btn--block btn--lg" onClick={() => go('names')}>
-              Get started
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M4 12h15M13 6l6 6-6 6" />
-              </svg>
-            </button>
-            <p className="center-row">
-              Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
-            </p>
-          </div>
+          <button className="btn tap" onClick={() => go('names')}>Get started</button>
+          <button className="btn btn--quiet tap mt2" onClick={() => go('signin')}>Sign in</button>
+          {err && <p className="warn mt3" role="alert">{err}</p>}
         </div>
-      )}
+      </div>
+    )
+  }
 
-      {step === 'names' && (
-        <>
-          <p className="eyebrow">Step 1 of 2</p>
-          <h1>Name your family.</h1>
-          <p className="lede">So the people you invite know it's you.</p>
-          <label>Family name</label>
-          <input type="text" placeholder="The Riveras" value={famName} autoFocus
-            onChange={(e) => setFamName(e.target.value)} />
-          <label>Your first name</label>
-          <input type="text" placeholder="Alex" value={parentName}
-            onChange={(e) => setParentName(e.target.value)} />
-          <button className="btn btn--primary btn--block" onClick={nameFamily} disabled={busy || !famName.trim() || !parentName.trim()}>
-            {busy ? <><span className="spinner" />One moment…</> : 'Continue'}
-          </button>
-          <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
-        </>
-      )}
+  /* ── the rest ──────────────────────────────────────────────────────────── */
+  return (
+    <div className="screen screen--step">
+      <div className="screen__pad">
+        {step === 'names' && (
+          <>
+            <div className="kicker">Step 1 of 2</div>
+            <h2 className="title mt3" style={{ marginBottom: 24 }}>Who&rsquo;s this for?</h2>
 
-      {step === 'secure' && (
-        <>
-          <p className="eyebrow">Step 2 of 2</p>
-          <h1>Lock it to you, {parentName}.</h1>
-          <p className="lede">
-            Your face is the key. Nothing to write down, nothing to lose — and only this
-            device can open it.
-          </p>
-          {!usePassphrase ? (
-            <>
-              <button className="btn btn--primary btn--block" onClick={createWithFaceId} disabled={busy}>
-                {busy ? <><span className="spinner" />Setting up…</> : 'Use Face ID'}
-              </button>
-              {!webauthnAvailable() && (
-                <p className="center-row center-row--dim">This browser has no Face ID — use a passphrase.</p>
-              )}
-              <p className="center-row">
-                <button className="link" onClick={() => setUsePassphrase(true)}>Use a passphrase instead</button>
-              </p>
-            </>
-          ) : (
-            <>
-              <label>Choose a passphrase</label>
-              <input type="password" placeholder="At least 8 characters" value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)} autoFocus />
-              <button className="btn btn--primary btn--block" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
-                {busy ? <><span className="spinner" />Setting up…</> : 'Create my account'}
-              </button>
-              {webauthnAvailable() && (
-                <p className="center-row">
-                  <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID instead</button>
-                </p>
-              )}
-            </>
-          )}
-        </>
-      )}
+            <label className="field">
+              <span>What the house is called</span>
+              <input
+                className="input" type="text" placeholder="Vance" value={famName} autoFocus
+                onChange={(e) => setFamName(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Your first name</span>
+              <input
+                className="input" type="text" placeholder="Priya" value={parentName}
+                onChange={(e) => setParentName(e.target.value)}
+              />
+            </label>
 
-      {step === 'signin' && (
-        <>
-          <h1>Welcome back.</h1>
-          <p className="lede">Same face, same account.</p>
-          {!usePassphrase ? (
-            <>
-              <button className="btn btn--primary btn--block" onClick={signInFaceId} disabled={busy}>
-                {busy ? <><span className="spinner" />Opening…</> : 'Sign in with Face ID'}
-              </button>
-              <p className="center-row">
-                <button className="link" onClick={() => setUsePassphrase(true)}>Use my passphrase</button>
-              </p>
-            </>
-          ) : (
-            <>
-              <label>Your passphrase</label>
-              <input type="password" value={passphrase} autoFocus
-                onChange={(e) => setPassphrase(e.target.value)} />
-              <button className="btn btn--primary btn--block" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
-                {busy ? <><span className="spinner" />Opening…</> : 'Sign in'}
-              </button>
-              <p className="center-row">
-                <button className="link" onClick={() => setUsePassphrase(false)}>Use Face ID</button>
-              </p>
-            </>
-          )}
-          <p className="center-row"><button className="link" onClick={() => go('welcome')}>Back</button></p>
-        </>
-      )}
+            <div className="spacer" />
+            <button
+              className="btn tap"
+              onClick={nameFamily}
+              disabled={busy || !famName.trim() || !parentName.trim()}
+            >
+              {busy ? <><span className="spin" />One moment…</> : 'Continue'}
+            </button>
+            <button className="btn btn--quiet tap mt2" onClick={() => go('welcome')}>Back</button>
+          </>
+        )}
 
-      {err && <div className="note note--err" role="alert">{err}</div>}
+        {step === 'secure' && (
+          <>
+            <div className="kicker">Step 2 of 2</div>
+            <h2 className="title mt3" style={{ marginBottom: 10 }}>Lock it to you, {parentName || 'you'}.</h2>
+            <p className="lede">
+              Your face is the key. Nothing is stored on this phone, and every
+              payment asks again.
+            </p>
+
+            {!usePassphrase ? (
+              <>
+                <div className="markbox markbox--accent mt5">
+                  <Icon name="face" size={46} />
+                </div>
+                <div className="spacer" />
+                {!webauthnAvailable() && (
+                  <p className="hint" style={{ marginBottom: 10 }}>
+                    This browser has no Face ID — use a passphrase.
+                  </p>
+                )}
+                <button className="btn tap" onClick={createWithFaceId} disabled={busy}>
+                  {busy ? <><span className="spin" />Setting up…</> : 'Use Face ID'}
+                </button>
+                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(true)}>
+                  Use a passphrase instead
+                </button>
+              </>
+            ) : (
+              <>
+                <label className="field mt5">
+                  <span>Choose a passphrase</span>
+                  <input
+                    className="input" type="password" placeholder="At least 8 characters"
+                    value={passphrase} autoFocus onChange={(e) => setPassphrase(e.target.value)}
+                  />
+                </label>
+                <div className="spacer" />
+                <button className="btn tap" onClick={createWithPassphrase} disabled={busy || passphrase.length < 8}>
+                  {busy ? <><span className="spin" />Setting up…</> : 'Create my account'}
+                </button>
+                {webauthnAvailable() && (
+                  <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(false)}>
+                    Use Face ID instead
+                  </button>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {step === 'signin' && (
+          <>
+            <div className="kicker">Kin</div>
+            <div className="spacer" />
+            <h2 className="title" style={{ marginBottom: 10 }}>Welcome back.</h2>
+            <p className="lede">Same face, same account.</p>
+            <div className="spacer" />
+
+            {!usePassphrase ? (
+              <>
+                <button className="btn tap" onClick={signInFaceId} disabled={busy}>
+                  {busy ? <><span className="spin" />Opening…</> : 'Sign in with Face ID'}
+                </button>
+                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(true)}>
+                  Use my passphrase
+                </button>
+              </>
+            ) : (
+              <>
+                <label className="field" style={{ marginBottom: 18 }}>
+                  <span>Your passphrase</span>
+                  <input
+                    className="input" type="password" value={passphrase} autoFocus
+                    onChange={(e) => setPassphrase(e.target.value)}
+                  />
+                </label>
+                <button className="btn tap" onClick={signInPassphrase} disabled={busy || passphrase.length < 8}>
+                  {busy ? <><span className="spin" />Opening…</> : 'Sign in'}
+                </button>
+                <button className="btn btn--quiet tap mt2" onClick={() => setUsePassphrase(false)}>
+                  Use Face ID
+                </button>
+              </>
+            )}
+            <button className="link tap mt2" style={{ alignSelf: 'center' }} onClick={() => go('welcome')}>Back</button>
+          </>
+        )}
+
+        {err && <p className="warn mt3" role="alert">{err}</p>}
+      </div>
     </div>
   )
 }

@@ -7,10 +7,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- The app commits to one dark palette, so the status bar matches it
+         rather than following the system. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Kin" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfcfb" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#12100e" />
+    <meta name="theme-color" content="#07100c" />
+    <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Pocket money with limits the network enforces." />
     <title>Kin</title>
   </head>

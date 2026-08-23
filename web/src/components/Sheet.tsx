@@ -9,7 +9,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
  * Tab is trapped inside, and the page behind doesn't scroll away underneath.
  */
 export function Sheet({
-  open, title, onClose, children, hideClose = false,
+  open, title, onClose, children, hideClose = false, head, back,
 }: {
   open: boolean
   title: string
@@ -17,6 +17,10 @@ export function Sheet({
   children: ReactNode
   /** For work that cannot be cancelled — offering a way out would be a lie. */
   hideClose?: boolean
+  /** Content before the title, e.g. the avatar on a person's sheet. */
+  head?: ReactNode
+  /** Say "Back" instead of "Close" when this sheet came from another. */
+  back?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const opener = useRef<Element | null>(null)
@@ -36,14 +40,16 @@ export function Sheet({
     const { overflow } = document.body.style
     document.body.style.overflow = 'hidden'
 
-    // Focus the first control, or the panel itself if there isn't one.
     const focusables = () =>
       Array.from(
         panel.current?.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       ).filter((el) => !el.hasAttribute('disabled'))
-    ;(focusables()[0] ?? panel.current)?.focus()
+
+    // Focus the panel itself, not the first control: on a phone, focusing an
+    // input raises the keyboard over the sheet before it has been read.
+    panel.current?.focus()
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); if (!hideClose) close.current(); return }
@@ -67,8 +73,7 @@ export function Sheet({
   if (!open) return null
 
   return (
-    <>
-      <div className="sheet-backdrop" onClick={hideClose ? undefined : onClose} aria-hidden="true" />
+    <div className="veil" onClick={hideClose ? undefined : (e) => { if (e.target === e.currentTarget) onClose() }}>
       <div
         className="sheet"
         role="dialog"
@@ -78,12 +83,15 @@ export function Sheet({
         tabIndex={-1}
       >
         <div className="sheet__grab" aria-hidden="true" />
-        <div className="sheet__head">
-          <h2>{title}</h2>
-          {!hideClose && <button className="link" onClick={onClose}>Cancel</button>}
+        <div className={`sheet__head${head ? ' sheet__head--person' : ''}`}>
+          {head}
+          <div className="sheet__title">{title}</div>
+          {!hideClose && (
+            <button className="link tap" onClick={onClose}>{back ? 'Back' : 'Close'}</button>
+          )}
         </div>
         {children}
       </div>
-    </>
+    </div>
   )
 }

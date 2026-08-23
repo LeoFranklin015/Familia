@@ -30,7 +30,14 @@ export type Whoami = {
   familyName?: string | null
 }
 
-export type Merchant = { name: string; address: string }
+/** Somewhere the household can pay. A name against an address — free to
+ *  keep, and a rule the contract enforces once `allowOnly` is on. */
+export type Recipient = {
+  id: string
+  name: string
+  address: string
+  kind: 'SHOP' | 'PERSON'
+}
 
 export type Activity = {
   id: string
@@ -77,7 +84,9 @@ export type ParentState = {
     amount: string
     createdAt: number
   }>
-  merchants: Merchant[]
+  recipients: Recipient[]
+  /** Whether the book is enforced on-chain, or only a convenience. */
+  allowOnly: boolean
 }
 
 export type FeeQuote = {
@@ -93,18 +102,28 @@ export type FeeQuote = {
   error?: string
 }
 
-/** What a member is allowed to know: their own name, whether they can pay,
- *  their own per-purchase limit, and their own history. Never the pot. */
+/**
+ * What a member is allowed to know: their own name, whether they can pay,
+ * their own limits, and their own history. Never the household balance, and
+ * never anything about anyone else — enforced on the server, not by hiding UI.
+ */
 export type MemberState = {
   name: string
   familyName: string
   symbol: string
   hasAllowance: boolean
+  /** Turned off by a guardian, as against never granted. Different screens. */
+  revoked: boolean
+  /** Their own per-purchase ceiling. */
   limit: string | null
+  /** Their own weekly ceiling. */
+  period: string | null
+  /** What would clear right now. */
   headroom: string
   spentThisPeriod: string
   resetsAt: number
-  merchants: Merchant[]
+  recipients: Recipient[]
+  allowOnly: boolean
   myRequests: Array<{ requestId: string; toName: string; amount: string; status: string; createdAt: number }>
   activity: Activity[]
 }
