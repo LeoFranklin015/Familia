@@ -9,7 +9,7 @@ import {
   AAVE, aAssetRead, assetRead, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch,
   canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits,
   managerIface, managerRead, MANAGER, parseUnits, planDeposit, planGuardianPay,
-  poolIface, predictScopeId, USDT_PAYMASTER, depositableAmount, type Tx,
+  poolIface, predictScopeId, spentInCurrentPeriod, USDT_PAYMASTER, depositableAmount, type Tx,
 } from '../chain.js'
 import { mustFamily, record, saveFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -566,7 +566,7 @@ parentRoutes.get('/api/state', async (c) => {
         managerRead.periodResetsAt(m.scopeId) as Promise<bigint>,
       ])
       spendable = formatUnits(sp)
-      spent = formatUnits(scope.spentInPeriod as bigint)
+      spent = formatUnits(spentInCurrentPeriod(scope, resets))
       resetsAt = Number(resets)
     }
     return {

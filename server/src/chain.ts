@@ -407,6 +407,30 @@ export function formatUnits(v: bigint): string {
   return ethers.formatUnits(v, AAVE.DECIMALS)
 }
 
+/**
+ * What has been spent in the period that is running *now*.
+ *
+ * `spentInPeriod` is storage, and the contract only clears it on the next
+ * write — so between a week rolling over and the next payment, the stored
+ * figure still belongs to the week before. `spendable()` already knows this
+ * and ignores it; anything reading the raw value shows a member a week's
+ * spending that no longer counts against them, and then refuses amounts the
+ * chain would have paid.
+ *
+ * The comparison uses `periodResetsAt`, which the contract derives from
+ * `block.timestamp` — so this follows the chain's clock rather than ours, and
+ * the boundary is decided by the same authority that will enforce it.
+ */
+export function spentInCurrentPeriod(
+  scope: { spentInPeriod: bigint; periodStart: bigint | number; periodLength: bigint | number },
+  resetsAt: bigint,
+): bigint {
+  const length = BigInt(scope.periodLength)
+  if (length === 0n) return scope.spentInPeriod
+  const currentStart = resetsAt - length
+  return currentStart === BigInt(scope.periodStart) ? scope.spentInPeriod : 0n
+}
+
 /** Pull an event arg out of a userOp receipt's logs. */
 export function eventArgFromLogs(logs: Array<{ address: string; topics: string[]; data: string }>, eventName: string, arg: string): string | undefined {
   for (const log of logs) {

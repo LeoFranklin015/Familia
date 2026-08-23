@@ -47,6 +47,10 @@ export function OpModal({ op, onClose }: { op: Op | null; onClose: () => void })
         <div className="kicker kicker--accent">{KICKER[op.status]}</div>
         <div className="sheet__title mt2" style={{ marginBottom: 14 }}>{op.title}</div>
 
+        {running && (
+          <div className="opbar" aria-hidden="true"><div className="opbar__fill" /></div>
+        )}
+
         <div className="steps">
           {op.steps.map((label, i) => {
             const landed = i < op.done

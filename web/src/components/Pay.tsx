@@ -1,4 +1,5 @@
-import { Icon, KindIcon } from './ui'
+import type { ReactNode } from 'react'
+import { figureSize, Icon, KindIcon } from './ui'
 import type { Recipient } from '../api'
 
 /**
@@ -90,63 +91,6 @@ export function Saved({
   )
 }
 
-/**
- * How much.
- *
- * Its own keypad rather than the system one: a payment amount is the only
- * thing being typed, the glyph set is eleven keys wide, and a phone keyboard
- * covering the bottom half of a payment screen hides the very thing being
- * confirmed. Two decimals maximum, one decimal point, no leading zeros.
- */
-export function Amount({
-  value, onChange, symbol, tone = 'normal',
-}: {
-  value: string
-  onChange: (v: string) => void
-  symbol: string
-  /** `over` when this amount will become a request rather than a payment. */
-  tone?: 'normal' | 'over'
-}) {
-  const press = (k: string) => {
-    if (k === '.') return onChange(value.includes('.') ? value : value === '' ? '0.' : `${value}.`)
-    const [whole, decimals] = value.split('.')
-    if (decimals !== undefined && decimals.length >= 2) return
-    // Seven figures is more than a household allowance will ever be, and it is
-    // where the figure stops fitting its panel.
-    if (decimals === undefined && whole.replace('-', '').length >= 7) return
-    onChange(value === '0' ? k : value + k)
-  }
-
-  const empty = value === ''
-  return (
-    <div className="panel mt4">
-      <div className="tile__label">How much</div>
-      <div
-        className={`amount mt1${empty ? ' amount--empty' : tone === 'over' ? ' amount--over' : ''}`}
-        role="status"
-        aria-live="polite"
-        aria-label={`${empty ? '0' : value} ${symbol}`}
-      >
-        <span className="amount__unit">{symbol}</span>
-        <span className="amount__value">{empty ? '0.00' : value}</span>
-      </div>
-
-      <div className="keypad">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map((k) => (
-          <button key={k} className="key tap" onClick={() => press(k)}>{k}</button>
-        ))}
-        <button
-          className="key key--del tap"
-          onClick={() => onChange(value.slice(0, -1))}
-          aria-label="Delete the last digit"
-        >
-          <Icon name="back" size={22} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export function match(recipients: Recipient[], address: string): Recipient | null {
   const t = address.trim().toLowerCase()
   if (!t) return null
@@ -169,4 +113,149 @@ export function label(recipients: Recipient[], address: string): string {
   if (r) return r.name
   const t = address.trim()
   return t.length > 14 ? `${t.slice(0, 6)}…${t.slice(-4)}` : t
+}
+
+/**
+ * Step one: who.
+ *
+ * `context` is whatever the screen wants to say about where the money comes
+ * from — a balance, a weekly limit. It stays compact, because it is background
+ * for the decision rather than the decision.
+ */
+export function WhoStep({
+  context, value, onChange, onScan, canScan, recipients, problem, onNext, nextLabel, blocked,
+}: {
+  context?: ReactNode
+  value: string
+  onChange: (v: string) => void
+  onScan: () => void
+  canScan: boolean
+  recipients: Recipient[]
+  problem?: string
+  onNext: () => void
+  nextLabel: string
+  /** Set when the address is real but will be refused — the hint says why. */
+  blocked?: boolean
+}) {
+  const ready = looksLikeAddress(value) && !blocked
+  return (
+    <>
+      <div className="scroll"><div className="page page--action">
+        {context}
+
+        <div className="kicker kicker--muted sec__pad">To</div>
+        <To
+          value={value}
+          onChange={onChange}
+          onScan={onScan}
+          recipients={recipients}
+          canScan={canScan}
+          problem={problem}
+        />
+
+        {recipients.length > 0 && (
+          <>
+            <div className="kicker kicker--muted" style={{ padding: '20px 8px 10px' }}>Saved</div>
+            <Saved recipients={recipients} value={value} onPick={onChange} />
+          </>
+        )}
+      </div></div>
+
+      <div className="actionbar">
+        <button className="btn tap" disabled={!ready} onClick={onNext}>
+          {looksLikeAddress(value) ? nextLabel : 'Enter an address'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Step two: how much.
+ *
+ * Its own screen, and deliberately not scrollable — the figure sits in the
+ * middle and the keypad stays put at the bottom. That is the whole reason for
+ * splitting the flow: on one long page the keypad ended up below the fold on
+ * the screen where the number is the point.
+ */
+export function AmountStep({
+  to, subtitle, onBack, value, onChange, symbol, tone = 'normal', under, action, onMax,
+}: {
+  /** Who is being paid, already resolved to a name where there is one. */
+  to: string
+  subtitle?: string
+  onBack: () => void
+  value: string
+  onChange: (v: string) => void
+  symbol: string
+  tone?: 'normal' | 'over'
+  /** One line under the figure: what will happen, or why it won't. */
+  under?: string
+  action: ReactNode
+  /** Offered when there is a definite ceiling worth filling in one tap. */
+  onMax?: () => void
+}) {
+  const empty = value === ''
+  return (
+    <>
+      <div className="amount-screen">
+        <div className="step-head">
+          <button className="step-head__back tap" onClick={onBack} aria-label="Back">
+            <Icon name="back" size={20} />
+          </button>
+          <div className="step-head__body">
+            <div className="step-head__to">{subtitle ?? 'To'}</div>
+            <div className="step-head__who">{to}</div>
+          </div>
+        </div>
+
+        <div className="amount-screen__figure">
+          <div
+            className={`amount-screen__big${empty ? ' amount-screen__big--empty' : tone === 'over' ? ' amount-screen__big--over' : ''}`}
+            role="status"
+            aria-live="polite"
+            aria-label={`${empty ? '0' : value} ${symbol}`}
+          >
+            <span className="amount-screen__unit">{symbol}</span>
+            <span className="amount-screen__value" style={{ fontSize: figureSize(empty ? '0' : value) }}>
+              {empty ? '0' : value}
+            </span>
+          </div>
+          {under && <p className="amount-screen__under">{under}</p>}
+          {onMax && <button className="maxchip tap" onClick={onMax}>Use the lot</button>}
+        </div>
+
+        <div className="amount-screen__pad">
+          <Keypad value={value} onChange={onChange} />
+        </div>
+      </div>
+
+      <div className="actionbar">{action}</div>
+    </>
+  )
+}
+
+/** Eleven keys and a delete. Two decimals, one point, seven figures. */
+export function Keypad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const press = (k: string) => {
+    if (k === '.') return onChange(value.includes('.') ? value : value === '' ? '0.' : `${value}.`)
+    const [whole, decimals] = value.split('.')
+    if (decimals !== undefined && decimals.length >= 2) return
+    if (decimals === undefined && whole.replace('-', '').length >= 7) return
+    onChange(value === '0' ? k : value + k)
+  }
+  return (
+    <div className="keypad">
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0'].map((k) => (
+        <button key={k} className="key tap" onClick={() => press(k)}>{k}</button>
+      ))}
+      <button
+        className="key key--del tap"
+        onClick={() => onChange(value.slice(0, -1))}
+        aria-label="Delete the last digit"
+      >
+        <Icon name="back" size={22} />
+      </button>
+    </div>
+  )
 }

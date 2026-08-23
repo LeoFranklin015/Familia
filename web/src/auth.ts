@@ -18,9 +18,15 @@ export class NeedsPassphrase extends Error {
   constructor() { super('passphrase required') }
 }
 
-/** Prompt the platform authenticator and return the key material for one call. */
+/**
+ * Prompt the platform authenticator and return the key material for one call.
+ *
+ * Scoped to the credential this browser already signed in with, so the prompt
+ * is Face ID rather than an account picker. Every write goes through here, so
+ * one saved tap is a lot of saved taps.
+ */
 export async function approve(): Promise<Approval> {
-  const pk = await unlockPasskey()
+  const pk = await unlockPasskey(knownCredentialId())
   if (!pk) throw new NeedsPassphrase()
   return { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex }
 }

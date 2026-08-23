@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDialog } from './useDialog'
 
 /**
  * Scanning a code at the till.
@@ -33,6 +34,10 @@ export function addressFromCode(text: string): string | null {
 export function Scan({ onFound, onCancel }: { onFound: (address: string) => void; onCancel: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // It covers the whole screen, so it has to behave like a dialog: without a
+  // trap, the action-bar button beneath it stayed reachable by keyboard and a
+  // payment could be committed with the camera still up.
+  const panel = useDialog<HTMLDivElement>(true, onCancel)
 
   // `onFound` is an inline arrow at the call site, so it changes identity on
   // every render of the screen. Held in a ref, the camera is opened once
@@ -92,7 +97,14 @@ export function Scan({ onFound, onCancel }: { onFound: (address: string) => void
   }, [])
 
   return (
-    <div className="veil veil--over">
+    <div
+      className="veil veil--over"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Scan a code to pay"
+      ref={panel}
+      tabIndex={-1}
+    >
       <div className="scan__head">
         <div className="kicker kicker--accent">Scan to pay</div>
         <button className="link tap" style={{ color: 'var(--pale)' }} onClick={onCancel}>Cancel</button>

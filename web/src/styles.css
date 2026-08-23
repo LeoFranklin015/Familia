@@ -103,8 +103,13 @@ a:hover { color: #fff; }
 .tap:active { transform: scale(0.985); }
 @media (prefers-reduced-motion: reduce) {
   .tap, .tap:active { transition: none; transform: none; }
-  .spin, .scan__line { animation: none !important; }
+  .scan__line { animation: none; }
+  /* Not `none`: a frozen ring reads as stuck. Pulse instead — no motion,
+     same message. */
+  .spin { animation: pulse 1.4s ease-in-out infinite; }
+  .opbar__fill { animation: none; background: var(--accent); width: 40%; }
 }
+@keyframes pulse { 50% { opacity: 0.35; } }
 
 /* ─────────────────────────────────────────────────────────── screens ───── */
 
@@ -138,10 +143,8 @@ a:hover { color: #fff; }
 /* In-app page padding. The tail clears the tab bar; the deeper one also
    clears an action bar sitting above it. */
 .page { padding: max(56px, calc(var(--safe-top) + 16px)) 14px calc(116px + var(--safe-bottom)); }
-/* Enough for the bar at its tallest: 24+56+12 plus a two-line hint (~45px)
-   and clearance over the tab bar. Under-reserving hides the last keypad row
-   behind the bar precisely when the amount needs correcting. */
-.page--action { padding-bottom: calc(246px + var(--safe-bottom)); }
+/* Clears the action bar: 78 above the bottom, plus 24+56+12 of its own. */
+.page--action { padding-bottom: calc(186px + var(--safe-bottom)); }
 .page--full {
   padding: max(56px, calc(var(--safe-top) + 16px)) 22px calc(42px + var(--safe-bottom));
   min-height: 100%;
@@ -258,12 +261,6 @@ a:hover { color: #fff; }
 
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-.panel {
-  padding: 18px 16px;
-  border-radius: var(--r);
-  background: rgb(234 243 238 / 0.04);
-  border: 1px solid var(--line);
-}
 
 .callout {
   display: flex;
@@ -452,19 +449,6 @@ a:hover { color: #fff; }
 .to__problem { margin: 10px 8px 0; font-size: 12.5px; color: var(--muted); }
 
 /* — the amount, and the pad that fills it — */
-.amount {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.05em;
-  color: var(--text);
-}
-.amount--empty { color: var(--dim); }
-.amount--over { color: var(--accent); }
-.amount__unit { font-size: 14px; color: var(--faint); align-self: flex-start; padding-top: 9px; }
-.amount__value { font-size: clamp(28px, 13vw, 48px); line-height: 1.1; min-width: 0; overflow-wrap: anywhere; }
 
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .key {
@@ -480,6 +464,100 @@ a:hover { color: #fff; }
 }
 .key:active { background: rgb(234 243 238 / 0.12); }
 .key--del { color: var(--muted); }
+
+/* ───────────────────────────────────────────────── paying, in steps ───── */
+
+/* The amount used to sit at the bottom of a long scroll, under a balance card,
+   two tiles, an address field and a row of chips — reachable only by scrolling
+   past everything, on the one screen where the number is the whole point. So
+   picking who and saying how much are two steps now, and the amount step is a
+   fixed layout that never scrolls: the keypad is always under the thumb. */
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px 4px;
+}
+.step-head__body { flex: 1; min-width: 0; }
+.step-head__to { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.step-head__who {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.step-head__back {
+  width: 44px; height: 44px; flex: none; margin-left: -10px;
+  border: 0; border-radius: 50%;
+  background: var(--fill-2); color: var(--text);
+  display: grid; place-items: center;
+}
+
+/* Fills the screen, no scroll: header, the figure in the middle, keypad at the
+   bottom. */
+.amount-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: max(56px, calc(var(--safe-top) + 16px)) 14px calc(178px + var(--safe-bottom));
+}
+.amount-screen__figure {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+  /* Everything else here is fixed; this block takes the shrink. Clipped so a
+     very short window can never push the figure over the keypad. */
+  overflow: hidden;
+}
+.amount-screen__big {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  color: var(--text);
+  max-width: 100%;
+}
+.amount-screen__big--empty { color: var(--dim); }
+.amount-screen__big--over { color: var(--accent); }
+.amount-screen__unit { font-size: 15px; color: var(--faint); align-self: flex-start; padding-top: 12px; }
+/* Sized at the call site from the figure's own length; never wraps. */
+.amount-screen__value { line-height: 1.1; white-space: nowrap; }
+.amount-screen__under { font-size: 12px; color: var(--muted); text-align: center; text-wrap: pretty; margin: 0; }
+.amount-screen__pad { padding-bottom: 10px; }
+
+/* A "max" affordance beside the figure, for adding money. */
+.maxchip {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-fill);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+@container phone (height < 820px) {
+  .amount-screen {
+    padding-top: max(44px, calc(var(--safe-top) + 12px));
+    padding-bottom: calc(166px + var(--safe-bottom));
+  }
+  .amount-screen__figure { gap: 6px; padding: 4px 0; }
+  .amount-screen__under { font-size: 11.5px; line-height: 1.4; }
+  .step-head__who { font-size: 17px; }
+}
+
 
 /* ─────────────────────────────────────────────────────────────── rows ──── */
 
@@ -696,7 +774,6 @@ a:hover { color: #fff; }
   z-index: 30;
 }
 .actionbar .btn { min-height: 56px; font-size: 16px; }
-.actionbar__hint { margin: 0 8px 10px; font-size: 12px; line-height: 1.45; color: var(--warn); text-wrap: pretty; }
 /* Over the limit the button never dies — it changes what it promises. */
 .btn--ask {
   background: transparent;
@@ -784,10 +861,35 @@ a:hover { color: #fff; }
 .spin {
   width: 16px;
   height: 16px;
+  flex: none;
   border-radius: 50%;
-  border: 1.5px solid var(--dim);
+  border: 2px solid rgb(95 211 163 / 0.25);
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
+}
+/* Inside a button, where it sits against a pale fill. */
+.btn .spin { border-color: rgb(6 17 12 / 0.25); border-top-color: var(--ink); }
+
+/* An indeterminate bar across the top of a running operation. One small ring
+   beside one line of text is too quiet to carry twenty seconds — this is the
+   part that says "still going" from across the room. */
+.opbar {
+  height: 3px;
+  border-radius: 999px;
+  background: rgb(95 211 163 / 0.15);
+  overflow: hidden;
+  margin: 0 0 16px;
+}
+.opbar__fill {
+  height: 100%;
+  width: 35%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: slide 1.4s ease-in-out infinite;
+}
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -896,13 +998,73 @@ a:hover { color: #fff; }
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 
+/* ────────────────────────────────────────────────── fitting the box ───── */
+
+/* The design was drawn at 402x874. Shorter phones exist, and on those the
+   cards were eating the screen — so the generous sizing is the ceiling, not
+   the constant. Nothing drops below a 44px touch target. */
+@container phone (height < 820px) {
+  .page { padding-top: max(44px, calc(var(--safe-top) + 12px)); }
+  .screen__pad { padding-top: max(44px, calc(var(--safe-top) + 12px)); }
+  .balance { padding: 18px; }
+  .figure__big { font-size: 46px; }
+  .figure__cents { font-size: 22px; }
+  .tile { padding: 14px; }
+  .tile__figure { font-size: 21px; margin-top: 6px; }
+  .key { min-height: 52px; font-size: 20px; }
+  .keypad { gap: 7px; margin-top: 12px; }
+  .btn { min-height: 50px; font-size: 15px; }
+  .btn--quiet { min-height: 46px; }
+  .input { min-height: 50px; }
+  .to__box, .to__scan { min-height: 52px; }
+      .display { font-size: 33px; }
+  .title { font-size: 27px; }
+  .h2 { font-size: 28px; }
+  .person { min-height: 60px; padding: 11px 14px; }
+  .avatar { width: 38px; height: 38px; font-size: 14px; }
+  .actionbar { padding: 18px 14px 10px; }
+  .actionbar .btn { min-height: 52px; }
+  .page--action { padding-bottom: calc(172px + var(--safe-bottom)); }
+  .sheet { padding: 14px 18px calc(32px + var(--safe-bottom)); }
+  .ring svg { width: 190px; height: 190px; }
+}
+
+/* Very short, or an older small phone. */
+@container phone (height < 700px) {
+  .figure__big { font-size: 40px; }
+  .balance { padding: 15px; }
+  .key { min-height: 46px; font-size: 19px; }
+  .tile__figure { font-size: 19px; }
+  .display { font-size: 29px; }
+    .pair { gap: 8px; }
+  .ring svg { width: 168px; height: 168px; }
+  .amount-screen__figure { gap: 4px; padding: 0; }
+  .maxchip { min-height: 30px; font-size: 12px; }
+  .step-head { padding-bottom: 0; }
+}
+
+/* Narrow, which is a different axis: 360px and 320px phones are still out
+   there and the two-up tiles are what break first. */
+@container phone (width < 370px) {
+  .page { padding-left: 11px; padding-right: 11px; }
+  .pill { padding: 0 13px; font-size: 13px; }
+  .figure__big { font-size: 40px; }
+  .tile__label { font-size: 10px; letter-spacing: 0.07em; }
+}
+
 /* ──────────────────────────────────────────────── the desktop frame ───── */
 
 /* On a phone this is nothing at all. On a desktop the app sits in a handset,
    because it is designed for a thumb and looks wrong stretched wide. */
 .stage { height: 100%; }
 .device { height: 100%; }
-.device__screen { height: 100%; overflow: hidden; position: relative; }
+.device__screen {
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  container-type: size;
+  container-name: phone;
+}
 .device__island, .stage__aside { display: none; }
 
 @media (min-width: 48rem) and (min-height: 40rem) {

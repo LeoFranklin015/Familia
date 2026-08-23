@@ -7,7 +7,7 @@ import { Hono, type Context } from 'hono'
 import { ethers } from 'ethers'
 import {
   AAVE, eventArgFromLogs, formatUnits, humanizeManagerRevert,
-  managerIface, managerRead, MANAGER, parseUnits,
+  managerIface, managerRead, MANAGER, parseUnits, spentInCurrentPeriod,
 } from '../chain.js'
 import { mustFamily, record, saveFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -45,7 +45,7 @@ memberRoutes.get('/api/me', async (c) => {
       managerRead.periodResetsAt(member.scopeId) as Promise<bigint>,
     ])
     spendable = formatUnits(sp)
-    spent = formatUnits(scope.spentInPeriod as bigint)
+    spent = formatUnits(spentInCurrentPeriod(scope, resets))
     resetsAt = Number(resets)
   }
 

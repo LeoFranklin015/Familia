@@ -4,9 +4,9 @@ import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Appr
 import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { Sheet } from '../components/Sheet'
-import { Amount, label, looksLikeAddress, match, Saved, To } from '../components/Pay'
+import { AmountStep, label, looksLikeAddress, match, WhoStep } from '../components/Pay'
 import { Scan, scanningSupported } from '../components/Scan'
-import { Blob, Figure, Icon, ScreenSkeleton, split, two } from '../components/ui'
+import { base, Blob, Figure, fromBase, Icon, ScreenSkeleton, split, two } from '../components/ui'
 import { resetDay, when } from './Activity'
 
 type Tab = 'pay' | 'activity'
@@ -26,6 +26,7 @@ type Tab = 'pay' | 'activity'
 export default function Member({ onLogout }: { onLogout: () => void }) {
   const [me, setMe] = useState<MemberState | null>(null)
   const [tab, setTab] = useState<Tab>('pay')
+  const [step, setStep] = useState<'who' | 'amount'>('who')
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [scan, setScan] = useState(false)
@@ -49,17 +50,21 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
     )
   }
 
-  const value = Number(amount || '0')
+  // All of this arithmetic is in whole base units, the way the contract does
+  // it. Compared as floats, `period - spent` lands a hair under the figure
+  // shown for it about a sixth of the time — so typing exactly the number on
+  // screen read as being *over* the limit.
+  const value = base(amount || '0')
   // `headroom` is what the contract would actually clear right now:
   // min(week remaining, per-purchase cap, what the household can cover). The
   // week remaining is the number a person thinks in, so the card shows that
   // and the button obeys the headroom — and when they disagree, the hint says
   // which constraint is biting.
-  const period = Number(me.period ?? 0)
-  const spent = Number(me.spentThisPeriod)
+  const period = base(me.period)
+  const spent = base(me.spentThisPeriod)
   const weekLeft = Math.max(0, period - spent)
-  const headroom = Number(me.headroom)
-  const perTx = Number(me.limit ?? 0)
+  const headroom = base(me.headroom)
+  const perTx = base(me.limit)
   const address = to.trim()
   const known = match(me.recipients, address)
   const valid = looksLikeAddress(address)
@@ -73,7 +78,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const shortAtHome = !overPerTx && !overWeek && value > headroom
   const over = value > 0 && (overPerTx || overWeek)
   const offList = me.allowOnly && valid && !known
-  const ready = valid && value > 0 && !shortAtHome
+  const ready = valid && value > 0 && !shortAtHome && !offList
 
   /** Why this won't go through as typed. One line, never a wall. */
   const problem = !address ? undefined
@@ -105,9 +110,22 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       setPending(null)
       setOp({ title, steps, done: 0, status: 'running', symbol: me.symbol, covered: true })
       try {
-        const r = await api.post<{ kind: string; txHash?: string }>('/api/spend', { to: address, amount, auth })
-        setOp((o) => o && { ...o, status: 'done', done: o.steps.length, txHash: r.txHash })
-        setAmount(''); setTo('')
+        const r = await api.post<{ kind: 'spent' | 'asked'; txHash?: string }>(
+          '/api/spend', { to: address, amount, auth },
+        )
+        // The server decides pay-or-ask from `spendable()` on-chain; the
+        // prediction above only chose what to *show*. Where they disagree —
+        // a poll landing between the tap and the signature — report what
+        // actually happened, not what was guessed. Telling someone their
+        // money is waiting on a guardian when it has already gone is the
+        // worst version of this screen being wrong.
+        const settled = r.kind === 'asked'
+          ? { title: `Asked to pay ${two(amount)}`, steps: ['Try the payment', 'Turn it into a request'] }
+          : { title: `Paid ${two(amount)} to ${name}`, steps: ['Take it out of Aave', `Send it to ${name}`] }
+        setOp((o) => o && {
+          ...o, ...settled, status: 'done', done: settled.steps.length, txHash: r.txHash,
+        })
+        setAmount(''); setTo(''); setStep('who')
         await load()
       } catch (e) {
         setOp((o) => o && {
@@ -179,77 +197,75 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="screen">
-      <div className="scroll">
-        {tab === 'pay' ? (
-          <div className="page page--action">
-            <div className="sec">
-              <div className="kicker">{me.familyName} household</div>
-              <span className="avatar avatar--xs">{me.name[0]?.toUpperCase()}</span>
-            </div>
-
-            <div className="balance">
-              <div className="kicker">Left this week</div>
-              <div style={{ marginTop: 12 }}>
-                <Figure value={String(weekLeft)} unit={me.symbol} />
-              </div>
-              <div className="note mt3">{me.symbol} · yours to spend</div>
-              <div className="chip chip--static mt3">
-                <Icon name="lock" size={14} />
-                <span className="num">{two(me.limit)} max in one go</span>
-              </div>
-            </div>
-
-            <div className="pair mt2">
-              <div className="tile">
-                <div className="tile__label">Spent this week</div>
-                <div className="tile__figure">{two(me.spentThisPeriod)}</div>
-                <div className="tile__note">of {two(me.period)}</div>
-              </div>
-              <div className="tile tile--pale">
-                <div className="tile__label">Starts again</div>
-                <div className="tile__figure">{resetDay(me.resetsAt)}</div>
-                <div className="tile__note">the week resets</div>
-              </div>
-            </div>
-
-            <div className="kicker kicker--muted sec__pad">To</div>
-            <To
-              value={to}
-              onChange={setTo}
-              onScan={() => setScan(true)}
-              recipients={me.recipients}
-              canScan={scanningSupported()}
-              problem={problem}
-            />
-
-            {me.recipients.length > 0 && (
+      {tab === 'pay' ? (
+        step === 'who' ? (
+          <WhoStep
+            context={
               <>
-                <div className="kicker kicker--muted" style={{ padding: '20px 8px 10px' }}>Saved</div>
-                <Saved recipients={me.recipients} value={to} onPick={setTo} />
+                <div className="sec">
+                  <div className="kicker">{me.familyName} household</div>
+                  <span className="avatar avatar--xs">{me.name[0]?.toUpperCase()}</span>
+                </div>
+
+                <div className="balance">
+                  <div className="kicker">Left this week</div>
+                  <div style={{ marginTop: 12 }}>
+                    <Figure value={fromBase(weekLeft)} unit={me.symbol} />
+                  </div>
+                  <div className="chip chip--static mt3">
+                    <Icon name="lock" size={14} />
+                    <span className="num">{two(me.limit)} max in one go</span>
+                  </div>
+                </div>
+
+                <div className="pair mt2">
+                  <div className="tile">
+                    <div className="tile__label">Spent this week</div>
+                    <div className="tile__figure">{two(me.spentThisPeriod)}</div>
+                    <div className="tile__note">of {two(me.period)}</div>
+                  </div>
+                  <div className="tile tile--pale">
+                    <div className="tile__label">Starts again</div>
+                    <div className="tile__figure">{resetDay(me.resetsAt)}</div>
+                    <div className="tile__note">the week resets</div>
+                  </div>
+                </div>
               </>
-            )}
-
-            <Amount value={amount} onChange={setAmount} symbol={me.symbol} tone={over ? 'over' : 'normal'} />
-          </div>
+            }
+            value={to}
+            onChange={setTo}
+            onScan={() => setScan(true)}
+            canScan={scanningSupported()}
+            recipients={me.recipients}
+            problem={problem}
+            blocked={offList}
+            onNext={() => setStep('amount')}
+            nextLabel={`Pay ${name}`}
+          />
         ) : (
-          <MyWeek me={me} onLock={lock} />
-        )}
-      </div>
-
-      {tab === 'pay' && (
-        <div className="actionbar">
-          {hint && <p className="actionbar__hint">{hint}</p>}
-          <button
-            className={`btn tap${over ? ' btn--ask' : ''}`}
-            disabled={!ready}
-            onClick={pay}
-          >
-            {!valid ? 'Enter an address'
-              : value <= 0 ? 'Enter an amount'
-              : over ? `Ask to pay ${two(amount)}`
-              : `Pay ${two(amount)} to ${name}`}
-          </button>
-        </div>
+          <AmountStep
+            to={name}
+            onBack={() => setStep('who')}
+            value={amount}
+            onChange={setAmount}
+            symbol={me.symbol}
+            tone={over ? 'over' : 'normal'}
+            under={hint ?? `${two(fromBase(weekLeft))} left this week · ${two(me.limit)} max in one go`}
+            action={
+              <button
+                className={`btn tap${over ? ' btn--ask' : ''}`}
+                disabled={!ready}
+                onClick={pay}
+              >
+                {value <= 0 ? 'Enter an amount'
+                  : over ? `Ask to pay ${two(amount)}`
+                  : `Pay ${two(amount)} to ${name}`}
+              </button>
+            }
+          />
+        )
+      ) : (
+        <div className="scroll"><MyWeek me={me} onLock={lock} /></div>
       )}
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
@@ -342,7 +358,7 @@ function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
         <div className="tile" style={{ padding: '14px 16px' }}>
           <div className="tile__label" style={{ fontSize: 10 }}>Left</div>
           <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>
-            {two(Math.max(0, Number(me.period ?? 0) - Number(me.spentThisPeriod)))}
+            {two(fromBase(Math.max(0, base(me.period) - base(me.spentThisPeriod))))}
           </div>
         </div>
         <div className="tile" style={{ padding: '14px 16px' }}>
