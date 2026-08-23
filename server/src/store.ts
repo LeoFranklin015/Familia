@@ -114,6 +114,8 @@ export type Subscription = {
   price: string
   revoked?: boolean
   startedAt: number
+  /** When the scope lapses on its own, in unix seconds. */
+  endsAt: number
   charges: Array<{ at: number; amount: string; txHash: string }>
 }
 

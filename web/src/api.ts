@@ -119,8 +119,9 @@ export type ParentState = {
   /** The household address book. Names against addresses, and nothing more:
    *  an entry permits nothing until it is on someone's list. */
   recipients: Recipient[]
-  /** What the household could sign up to. */
+  /** What the household could sign up to, and on what terms. */
   services: Service[]
+  terms: Terms
   /** What it already has, live from the contract. */
   subscriptions: Subscription[]
 }
@@ -132,6 +133,9 @@ export type Service = {
   price: string
   payTo: string
 }
+
+/** The shape of every mandate: how long a period is, and how many of them. */
+export type Terms = { periodDays: number; termMonths: number }
 
 /**
  * A running mandate.
@@ -156,6 +160,11 @@ export type Subscription = {
   renewsAt: number
   /** How long a period runs, so the screen can say it rather than assume it. */
   periodDays: number
+  /** When the mandate lapses on its own, in unix seconds. */
+  endsAt: number
+  /** How many charges the term allows in total, and how many have happened. */
+  termMonths: number
+  taken: number
 }
 
 export type FeeQuote = {

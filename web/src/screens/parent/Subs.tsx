@@ -62,7 +62,10 @@ export function SubsTab({
   const subscribe = (service: Service) =>
     act({
       title: `Subscribe to ${service.name}`,
-      steps: [`Let ${service.name} take ${service.price} a month`],
+      steps: [
+        `Let ${service.name} take ${service.price} a month`,
+        `For ${st.terms.termMonths} months, then it stops`,
+      ],
       quote: { action: 'subscribe', serviceId: service.id },
       call: (auth) => api.post(`/api/subscriptions/${service.id}/subscribe`, { auth }),
     })
@@ -98,8 +101,9 @@ export function SubsTab({
       <h2 className="h2" style={{ margin: '0 8px 6px' }}>Subscriptions</h2>
       <p className="hint" style={{ margin: '0 8px 20px' }}>
         Each one is a mandate on the same contract your family&rsquo;s limits use.
-        A service can take its price once a month, only to its own address, and
-        you can stop it without asking it first.
+        A service can take its price once every {st.terms.periodDays} days, only
+        to its own address, for {st.terms.termMonths} months. Then it stops by
+        itself. You can end it sooner without asking them.
       </p>
 
       {running.length > 0 && (
@@ -125,7 +129,8 @@ export function SubsTab({
                   <div className="row__body">
                     <span className="recipient__name">{sub.name}</span>
                     <span className="recipient__addr">
-                      Can take up to {two(sub.price)} {st.symbol} every {sub.periodDays} days
+                      {two(sub.price)} {st.symbol} every {sub.periodDays} days
+                      {' · '}{sub.taken} of {sub.termMonths} taken
                     </span>
                   </div>
                   <button className="link tap link--sm" onClick={() => cancel(sub)}>Cancel</button>
@@ -145,9 +150,9 @@ export function SubsTab({
                 <div className="subs__foot">
                   <span className="note">
                     {sub.dueNow
-                      ? `${two(String(left))} ${st.symbol} due`
+                      ? `${two(String(left))} ${st.symbol} due now`
                       : sub.renewsAt
-                        ? `Nothing more until ${when(sub.renewsAt * 1000)}`
+                        ? `Next on ${when(sub.renewsAt * 1000)}`
                         : 'Waiting on the chain'}
                   </span>
                   <button
@@ -179,6 +184,15 @@ export function SubsTab({
                   <dl className="dl">
                     <Row label="Most per charge" value={`${two(sub.price)} ${st.symbol}`} />
                     <Row label="How often" value={`Once every ${sub.periodDays} days`} />
+                    <Row
+                      label="For how long"
+                      value={`${sub.termMonths} months, ending ${sub.endsAt ? when(sub.endsAt * 1000) : 'once granted'}`}
+                    />
+                    <Row
+                      label="Most it can ever take"
+                      value={`${two(String(Number(sub.price) * sub.termMonths))} ${st.symbol}`}
+                    />
+                    <Row label="Payments left" value={String(Math.max(0, sub.termMonths - sub.taken))} />
                     <Row label="Only to" value={shortAddress(sub.payTo)} />
                     <Row
                       label="Taken so far"
@@ -196,9 +210,11 @@ export function SubsTab({
                       </div>
                     )}
                     <p className="hint mt2">
-                      These are the scope&rsquo;s own caps, read back from the contract.
-                      Nothing here is a setting in this app, so nothing here can be
-                      widened by {sub.name} or by us.
+                      These are the scope&rsquo;s own caps and its expiry, read back
+                      from the contract. Nothing here is a setting in this app, so
+                      nothing here can be widened by {sub.name} or by us. After
+                      {' '}{sub.termMonths} months the contract refuses it whether or
+                      not anyone remembered to cancel.
                     </p>
                   </dl>
                 )}
@@ -218,7 +234,8 @@ export function SubsTab({
           <span className="row__body">
             <span className="recipient__name">{service.name}</span>
             <span className="recipient__addr">
-              {two(service.price)} {st.symbol} a month · to {shortAddress(service.payTo)}
+              {two(service.price)} × {st.terms.termMonths} months ·{' '}
+              {two(String(Number(service.price) * st.terms.termMonths))} {st.symbol} at most
             </span>
           </span>
           <button className="link tap link--sm" onClick={() => subscribe(service)}>Subscribe</button>
@@ -230,8 +247,9 @@ export function SubsTab({
       <div className="callout mt4">
         <Icon name="lock" size={18} />
         <p className="note">
-          The cap and the destination are both on-chain. A service cannot take
-          twice in a month or send the money anywhere else, whatever it asks for.
+          The cap, the destination and the end date are all on-chain. A service
+          cannot take twice in a period, send the money anywhere else, or keep
+          charging past its term, whatever it asks for.
         </p>
       </div>
     </div></div>

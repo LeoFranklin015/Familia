@@ -5,7 +5,7 @@ import {
   managerRead, spentInCurrentPeriod, supplyApr,
 } from '../../chain.js'
 import { bootstrapStatus } from '../../bootstrap.js'
-import { MONTH_SECONDS, SERVICES, serviceById } from '../../subscriptions.js'
+import { MONTH_SECONDS, SERVICES, serviceById, TERM_MONTHS } from '../../subscriptions.js'
 import { parentOf, refuseParent } from '../guard.js'
 import { outstandingCaps } from './plans.js'
 import { hasExpired } from './money.js'
@@ -62,6 +62,7 @@ stateRoutes.get('/api/state', async (c) => {
     recipients: family.recipients,
     // What the household could sign up to, and what it already has.
     services: SERVICES,
+    terms: { periodDays: Math.round(MONTH_SECONDS / 86400), termMonths: TERM_MONTHS },
     subscriptions,
   })
 })
@@ -104,6 +105,11 @@ async function readSubscription(s: import('../../store.js').Subscription) {
     dueNow: Number(left) > 0,
     renewsAt,
     periodDays: Math.round(MONTH_SECONDS / 86400),
+    // The term. `endsAt` is the scope's own expiry, after which the contract
+    // refuses a collection whether or not anyone cancelled.
+    endsAt: s.endsAt ?? 0,
+    termMonths: TERM_MONTHS,
+    taken: s.charges.length,
   }
 }
 

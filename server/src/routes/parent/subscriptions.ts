@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { eventArgFromLogs, feeChargedFromLogs, humanizeManagerRevert, parseUnits } from '../../chain.js'
 import { record, updateFamily } from '../../store.js'
 import { waitForUserOp } from '../../wdk.js'
-import { collect, serviceById } from '../../subscriptions.js'
+import { collect, serviceById, TERM_MONTHS, TERM_SECONDS } from '../../subscriptions.js'
 import { parentOf, parentWrite, refuseParent } from '../guard.js'
 import { cancelSubscriptionPlan, subscribePlan } from './plans.js'
 
@@ -37,12 +37,13 @@ subscriptionRoutes.post('/api/subscriptions/:serviceId/subscribe', (c) =>
         scopeId,
         price: service.price,
         startedAt: Date.now(),
+        endsAt: Math.floor(Date.now() / 1000) + TERM_SECONDS,
         charges: [],
       })
     })
     await record(family.id, {
       kind: 'allowance',
-      text: `${service.name} can take ${service.price} a month`,
+      text: `${service.name} can take ${service.price} a month for ${TERM_MONTHS} months`,
       txHash: result.txHash,
     })
     return c.json({ scopeId, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })

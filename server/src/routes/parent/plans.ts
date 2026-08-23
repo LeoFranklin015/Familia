@@ -12,7 +12,7 @@ import {
   AAVE, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch, erc20, MANAGER,
   managerIface, parseUnits, predictScopeId, type Tx,
 } from '../../chain.js'
-import { billerAddress, MONTH_SECONDS, type Service } from '../../subscriptions.js'
+import { billerAddress, MONTH_SECONDS, TERM_SECONDS, type Service } from '../../subscriptions.js'
 import type { Family, Member, Subscription } from '../../store.js'
 
 /** A week, in seconds. The default period a limit runs over. */
@@ -116,8 +116,10 @@ export function revokePlan(family: Family, member: Member): Tx[] {
  * `perTxCap` and `periodCap` are both one month's price, so the biller can take
  * the price once per period and a second attempt is refused on-chain. The
  * allowlist pins the destination to the service's payout address, so the biller
- * cannot redirect the money to itself. And the household can revoke it without
- * asking anyone, which is the part no card mandate gives you.
+ * cannot redirect the money to itself. The expiry is a fixed term, so the
+ * mandate runs out on its own rather than standing forever. And the household
+ * can revoke it early without asking anyone, which is the part no card mandate
+ * gives you.
  */
 export async function subscribePlan(
   family: Family,
@@ -132,7 +134,7 @@ export async function subscribePlan(
       perTxCap: price,
       periodCap: price,
       periodLength: BigInt(MONTH_SECONDS),
-      expiry: 0n,
+      expiry: BigInt(Math.floor(Date.now() / 1000) + TERM_SECONDS),
       newAllowanceTotal: outstandingCaps(family, price),
     }),
     ...buildAllowlistBatch([scopeId], { allow: [service.payTo] }),

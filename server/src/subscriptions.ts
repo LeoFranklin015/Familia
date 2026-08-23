@@ -17,6 +17,18 @@ import { MANAGER, managerIface, provider } from './chain.js'
 /** A month, in seconds. What a subscription period runs over. */
 export const MONTH_SECONDS = 30 * 86400
 
+/**
+ * How many months a mandate runs for before it lapses on its own.
+ *
+ * The expiry is exactly this many periods, so a service gets twelve charges
+ * and a thirteenth is refused even if nobody remembered to cancel. Set it any
+ * longer and the last period would leave a window for one more.
+ *
+ * An open-ended mandate is the one people cannot get rid of. This one runs out.
+ */
+export const TERM_MONTHS = 12
+export const TERM_SECONDS = TERM_MONTHS * MONTH_SECONDS
+
 export type Service = {
   id: string
   name: string
