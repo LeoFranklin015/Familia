@@ -1,4 +1,5 @@
 import { Icon } from './ui'
+import { useDialog } from './useDialog'
 
 /**
  * What an on-chain operation looks like while it happens.
@@ -35,12 +36,14 @@ export type Op = {
 const KICKER = { running: 'Working', done: 'Done', failed: 'Refused' } as const
 
 export function OpModal({ op, onClose }: { op: Op | null; onClose: () => void }) {
+  const running = op?.status === 'running'
+  // No Escape while it runs: nothing is cancellable at that point.
+  const panel = useDialog<HTMLDivElement>(Boolean(op), running ? undefined : onClose)
   if (!op) return null
-  const running = op.status === 'running'
 
   return (
     <div className="veil veil--op">
-      <div className="modal" role="dialog" aria-modal="true" aria-label={op.title}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={op.title} ref={panel} tabIndex={-1}>
         <div className="kicker kicker--accent">{KICKER[op.status]}</div>
         <div className="sheet__title mt2" style={{ marginBottom: 14 }}>{op.title}</div>
 

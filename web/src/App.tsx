@@ -15,7 +15,7 @@ export default function App() {
     api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null }))
   }, [])
 
-  const refresh = () => api.get<Whoami>('/api/whoami').then(setWho)
+  const refresh = () => api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null }))
 
   return <Device>{inside()}</Device>
 

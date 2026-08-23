@@ -83,7 +83,9 @@ export function FamilyTab({
       <Sheet
         open={sheet === 'person' && Boolean(person)}
         title={person?.name ?? ''}
-        onClose={() => setSheet(null)}
+        // Clearing the id unmounts the limits sheet too, so its drafts start
+        // from the saved caps next time rather than from what was last typed.
+        onClose={() => { setSheet(null); setPersonId(null) }}
         head={person && (
           <span className={`avatar${person.revoked ? ' avatar--off' : ''}`} style={{ width: 44, height: 44 }}>
             {person.name[0]?.toUpperCase()}
@@ -216,6 +218,7 @@ function Ask({ r, act }: { r: ParentState['pendingRequests'][number]; act: Act }
     steps: verdict === 'approve'
       ? ['Take it out of Aave', `Send it to ${r.toName}`]
       : ['Turn down the ask on-chain'],
+    quote: { action: 'settle', requestId: r.requestId, verdict },
     call: (auth) => api.post(`/api/requests/${r.requestId}/${verdict}`, { auth }),
   })
 
@@ -259,7 +262,12 @@ function LimitsSheet({
 }) {
   const [perTx, setPerTx] = useState(() => two(member.caps?.perTx ?? '5'))
   const [period, setPeriod] = useState(() => two(member.caps?.period ?? '25'))
-  const ok = Number(perTx) > 0 && Number(period) >= Number(perTx)
+
+  // Plain money, at most two decimals. Anything else reaches parseUnits on the
+  // server and comes back as an untranslated 500.
+  const clean = (v: string) => /^\d{1,7}(\.\d{1,2})?$/.test(v.trim())
+  const wellFormed = clean(perTx) && clean(period)
+  const ok = wellFormed && Number(perTx) > 0 && Number(period) >= Number(perTx)
 
   return (
     <Sheet open={open} title={`${member.name}'s limits`} onClose={onBack} back>
@@ -282,7 +290,10 @@ function LimitsSheet({
         The contract holds these, not the app. Anything over them turns into a
         request for you — it doesn&rsquo;t fail.
       </p>
-      {!ok && Number(perTx) > 0 && (
+      {!wellFormed && (perTx.trim() || period.trim()) && (
+        <p className="warn mt2">Amounts only, up to two decimal places.</p>
+      )}
+      {wellFormed && !ok && Number(perTx) > 0 && (
         <p className="warn mt2">A week has to allow at least one purchase.</p>
       )}
 

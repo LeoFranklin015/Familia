@@ -54,12 +54,12 @@ export type ParentState = {
   wallet: {
     address: string
     pot: string
-    vault: string
-    asset: string
     /** USD₮ sitting in the account, outside Aave: what deposits are funded
      *  from and what network fees are charged against. */
     loose: string
-    feeBalance: string
+    /** How much of `loose` may actually be supplied — the rest is the fee
+     *  headroom this account keeps to pay its own way. */
+    addable: string
     feeMode: 'usdt' | 'sponsored'
     paymaster: string | null
     /** Onboarding funding: happens once, in the background, at sign-up. */

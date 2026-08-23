@@ -67,6 +67,9 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       const pk = await unlockPasskey()
       if (!pk) throw new Error('This device could not use a passkey. Try your passphrase.')
       await api.post('/api/session', { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
+      // The passphrase fallback reads this back; without it, every later
+      // write on this device would have no credential to unlock.
+      localStorage.setItem('kin_credentialId', pk.credentialId)
       onReady()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not sign in.')

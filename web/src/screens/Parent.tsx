@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type FeeQuote, type ParentState } from '../api'
-import { approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
+import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
 import { Sheet } from '../components/Sheet'
 import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
@@ -79,7 +79,19 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     return () => clearInterval(t)
   }, [load])
 
-  const flash = (m: string) => { setToast(m); setTimeout(() => setToast(''), 1400) }
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
+  /** Sign out. The vault stays; only this session ends. */
+  const lock = async () => {
+    try { await api.post('/api/logout') } catch { /* the session is going either way */ }
+    onLogout()
+  }
+
+  const flash = (m: string) => {
+    setToast(m)
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(''), 1400)
+  }
 
   /**
    * Price it, confirm it, run it.
@@ -121,8 +133,12 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
 
     const start = () => {
       approve().then(run).catch((e) => {
-        if (e instanceof NeedsPassphrase) { setAskPass(() => run); return }
-        setPending(null)
+        // Hand off to the passphrase sheet, and drop the Face ID sheet:
+        // they stack, and Confirm sits above it.
+        if (e instanceof NeedsPassphrase) { setPending(null); setAskPass(() => run); return }
+        // A cancelled or failed prompt: say so in the sheet rather than
+        // making it vanish with nothing to read.
+        setPending((p) => p && { ...p, blocked: approvalProblem(e) })
       })
     }
 
@@ -137,7 +153,9 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           ...p, fee: q.fee ?? null, covered: plan.covered, blocked: q.blocked,
         })
       })
-      .catch(() => setPending((p) => p && { ...p, fee: null }))
+      // A quote that won't come is not a blocker — the operation can still be
+      // signed — but the row must stop pretending to load.
+      .catch(() => setPending((p) => p && { ...p, fee: null, feeUnknown: true }))
   }, [st, load])
 
   const withPassphrase = () => {
@@ -186,12 +204,15 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           <button
             key={id} role="tab" aria-selected={tab === id}
             className={`tab tap${tab === id ? ' tab--on' : ''}`}
-            aria-label={label} onClick={() => setTab(id)}
+            aria-label={id === 'family' && asks.length > 0
+              ? `${label}, ${asks.length} waiting`
+              : label}
+            onClick={() => setTab(id)}
           >
             <Icon name={icon} size={19} />
             {tab === id && <span>{label}</span>}
             {id === 'family' && asks.length > 0 && (
-              <span className="tab__badge">{asks.length}</span>
+              <span className="tab__badge" aria-hidden="true">{asks.length}</span>
             )}
           </button>
         ))}
@@ -221,6 +242,9 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           it actually cost.
         </p>
         <button className="btn btn--quiet tap mt4" onClick={() => setSheet(null)}>Got it</button>
+        <button className="link tap mt2" style={{ display: 'block', margin: '10px auto 0' }} onClick={lock}>
+          Lock this device
+        </button>
       </Sheet>
 
       <Sheet open={Boolean(note)} title={note ? NOTES[note].title : ''} onClose={() => setNote(null)}>
@@ -264,9 +288,17 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
   )
 }
 
-/** Sum of everyone's weekly limits — what the manager is approved for. */
+/**
+ * Sum of the weekly limits the manager is actually approved for.
+ *
+ * Mirrors the server's `outstandingCaps`: a live scope, not turned off.
+ * Counting revoked people would contradict the note beside it, which promises
+ * the figure drops the moment someone is turned off.
+ */
 function promised(st: ParentState): string {
-  return two(st.members.reduce((t, m) => t + Number(m.caps?.period ?? 0), 0))
+  return two(st.members
+    .filter((m) => m.scopeId && !m.revoked)
+    .reduce((t, m) => t + Number(m.caps?.period ?? 0), 0))
 }
 
 /* ── Home ────────────────────────────────────────────────────────────────── */
@@ -281,13 +313,15 @@ function Home({
   onSeeAll: () => void
   onCopied: (m: string) => void
 }) {
-  const loose = Number(st.wallet.loose)
+  // What can actually be supplied, which is not the whole loose balance: the
+  // account keeps a few operations' worth back to pay its own fees with.
+  const addable = st.wallet.addable
 
   const addMoney = () => act({
-    title: `Move ${two(st.wallet.loose)} ${st.symbol} into Aave`,
+    title: `Move ${two(addable)} ${st.symbol} into Aave`,
     steps: ['Move it into Aave'],
-    quote: { action: 'deposit', amount: st.wallet.loose },
-    call: (auth) => api.post('/api/deposit', { amount: st.wallet.loose, auth }),
+    quote: { action: 'deposit', amount: addable },
+    call: (auth) => api.post('/api/deposit', { amount: addable, auth }),
   })
 
   const copy = async () => {
@@ -327,8 +361,8 @@ function Home({
         </div>
         <div className="tile tile--pale">
           <div className="tile__label">Ready to add</div>
-          <div className="tile__figure">{two(st.wallet.loose)}</div>
-          {loose > 0 ? (
+          <div className="tile__figure">{two(addable)}</div>
+          {Number(addable) > 0 ? (
             <button
               className="btn btn--sm tap mt3"
               style={{ background: 'var(--ink)', color: 'var(--pale)', minHeight: 44, fontSize: 13.5 }}

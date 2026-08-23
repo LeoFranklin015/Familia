@@ -226,15 +226,30 @@ export async function faucetWouldMint(parent: string, amount: bigint): Promise<b
  * deposit path is what makes a second deposit possible at all, and it means
  * "add to the pot" only ever moves money the household already has.
  */
+/**
+ * How much of the loose balance can actually be supplied.
+ *
+ * Not all of it: an account that moves every last token into Aave has nothing
+ * left to pay the fee for its next operation with, and this account pays its
+ * own fees in USD₮. So a few operations' worth stays behind, and that is the
+ * figure the interface should offer — offering the full balance and then
+ * refusing it is how "Add money" becomes a button that never works.
+ */
+export async function depositableAmount(parent: string): Promise<bigint> {
+  const [held, perOp] = await Promise.all([
+    assetRead.balanceOf(parent) as Promise<bigint>,
+    feePerOperation(),
+  ])
+  const reserve = perOp * 20n
+  return held > reserve ? held - reserve : 0n
+}
+
 export async function planDeposit(parent: string, amount: bigint): Promise<
   | { ok: true; txs: Tx[] }
   | { ok: false; reason: string }
 > {
   const held = (await assetRead.balanceOf(parent)) as bigint
-  const perOp = await feePerOperation()
-  // Leave enough behind to keep paying fees with.
-  const reserve = perOp * 20n
-  const available = held > reserve ? held - reserve : 0n
+  const available = await depositableAmount(parent)
 
   if (amount > available) {
     return {

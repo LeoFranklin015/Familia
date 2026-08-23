@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type MemberState } from '../api'
-import { approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
+import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
 import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { Sheet } from '../components/Sheet'
@@ -50,6 +50,14 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   }
 
   const value = Number(amount || '0')
+  // `headroom` is what the contract would actually clear right now:
+  // min(week remaining, per-purchase cap, what the household can cover). The
+  // week remaining is the number a person thinks in, so the card shows that
+  // and the button obeys the headroom — and when they disagree, the hint says
+  // which constraint is biting.
+  const period = Number(me.period ?? 0)
+  const spent = Number(me.spentThisPeriod)
+  const weekLeft = Math.max(0, period - spent)
   const headroom = Number(me.headroom)
   const perTx = Number(me.limit ?? 0)
   const address = to.trim()
@@ -58,10 +66,14 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const name = label(me.recipients, address)
 
   const overPerTx = perTx > 0 && value > perTx
-  const overWeek = value > headroom
+  const overWeek = value > weekLeft
+  // Within their own limits, but the household position can't cover it. A
+  // guardian approving would not help — approveRequest still has to pull the
+  // funds — so this is not an "ask" case.
+  const shortAtHome = !overPerTx && !overWeek && value > headroom
   const over = value > 0 && (overPerTx || overWeek)
   const offList = me.allowOnly && valid && !known
-  const ready = valid && value > 0
+  const ready = valid && value > 0 && !shortAtHome
 
   /** Why this won't go through as typed. One line, never a wall. */
   const problem = !address ? undefined
@@ -72,6 +84,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const hint = offList ? 'Whoever set this up has to add this address first.'
     : overPerTx ? `Over your ${two(me.limit)} limit — this goes home to say yes to.`
     : overWeek && value > 0 ? 'More than you have left this week — a parent can wave it through.'
+    : shortAtHome ? "There isn't enough at home to cover this right now."
     : undefined
 
   /**
@@ -108,8 +121,10 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       title, fee: null, symbol: me.symbol, covered: true,
       run: () => {
         approve().then(run).catch((e) => {
-          if (e instanceof NeedsPassphrase) { setAskPass(() => run); return }
-          setPending(null)
+          // Hand off to the passphrase sheet, and drop the Face ID sheet:
+          // they stack, and Confirm sits above it.
+          if (e instanceof NeedsPassphrase) { setPending(null); setAskPass(() => run); return }
+          setPending((p) => p && { ...p, blocked: approvalProblem(e) })
         })
       },
     })
@@ -124,6 +139,12 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   }
 
   const waiting = me.myRequests.filter((r) => r.status === 'pending').length
+
+  /** Sign out. The vault stays; only this session ends. */
+  const lock = async () => {
+    try { await api.post('/api/logout') } catch { /* the session is going either way */ }
+    onLogout()
+  }
 
   /* Nothing to spend. Two different situations wearing the same shape: never
      granted, or turned off — and a kid deserves to know which. */
@@ -147,6 +168,9 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             </p>
             <div className="spacer" />
             <div className="kicker kicker--faint">Nothing here belongs to you yet</div>
+            <button className="link tap mt3" style={{ alignSelf: 'flex-start', paddingLeft: 0 }} onClick={lock}>
+              Lock this device
+            </button>
           </div>
         </div>
       </div>
@@ -166,7 +190,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             <div className="balance">
               <div className="kicker">Left this week</div>
               <div style={{ marginTop: 12 }}>
-                <Figure value={me.headroom} unit={me.symbol} />
+                <Figure value={String(weekLeft)} unit={me.symbol} />
               </div>
               <div className="note mt3">{me.symbol} · yours to spend</div>
               <div className="chip chip--static mt3">
@@ -208,7 +232,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             <Amount value={amount} onChange={setAmount} symbol={me.symbol} tone={over ? 'over' : 'normal'} />
           </div>
         ) : (
-          <MyWeek me={me} />
+          <MyWeek me={me} onLock={lock} />
         )}
       </div>
 
@@ -233,11 +257,16 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
           <button
             key={id} role="tab" aria-selected={tab === id}
             className={`tab tap${tab === id ? ' tab--on' : ''}`}
-            aria-label={text} onClick={() => setTab(id)}
+            aria-label={id === 'activity' && waiting > 0
+              ? `${text}, ${waiting} waiting`
+              : text}
+            onClick={() => setTab(id)}
           >
             <Icon name={icon} size={19} />
             {tab === id && <span>{text}</span>}
-            {id === 'activity' && waiting > 0 && <span className="tab__badge">{waiting}</span>}
+            {id === 'activity' && waiting > 0 && (
+              <span className="tab__badge" aria-hidden="true">{waiting}</span>
+            )}
           </button>
         ))}
       </nav>
@@ -273,7 +302,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
  * A kid's question is never "what is my period cap", it's "how much is left" —
  * and a filling ring answers that at a glance in a way two numbers never do.
  */
-function MyWeek({ me }: { me: MemberState }) {
+function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
   const period = Number(me.period ?? 0)
   const spent = Number(me.spentThisPeriod)
   const fraction = period > 0 ? Math.min(1, spent / period) : 0
@@ -312,7 +341,9 @@ function MyWeek({ me }: { me: MemberState }) {
       <div className="pair mt3">
         <div className="tile" style={{ padding: '14px 16px' }}>
           <div className="tile__label" style={{ fontSize: 10 }}>Left</div>
-          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>{two(me.headroom)}</div>
+          <div className="tile__figure" style={{ fontSize: 20, marginTop: 5 }}>
+            {two(Math.max(0, Number(me.period ?? 0) - Number(me.spentThisPeriod)))}
+          </div>
         </div>
         <div className="tile" style={{ padding: '14px 16px' }}>
           <div className="tile__label" style={{ fontSize: 10 }}>Starts again</div>
@@ -353,6 +384,9 @@ function MyWeek({ me }: { me: MemberState }) {
       ) : (
         <p className="empty mt5">Nothing spent yet. What you pay for shows up here.</p>
       )}
+      <button className="link tap mt5" style={{ display: 'block', margin: '26px auto 0' }} onClick={onLock}>
+        Lock this device
+      </button>
     </div>
   )
 }

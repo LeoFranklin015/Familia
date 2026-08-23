@@ -77,7 +77,9 @@ export function Saved({
         <button
           key={r.id}
           className="pill tap"
-          aria-pressed={same(r.address, value)}
+          // A choice among several, not a toggle: activating the selected one
+          // re-selects it rather than turning it off.
+          aria-current={same(r.address, value) ? 'true' : undefined}
           onClick={() => onPick(r.address)}
         >
           <KindIcon kind={r.kind} />
@@ -107,8 +109,11 @@ export function Amount({
 }) {
   const press = (k: string) => {
     if (k === '.') return onChange(value.includes('.') ? value : value === '' ? '0.' : `${value}.`)
-    const [, decimals] = value.split('.')
+    const [whole, decimals] = value.split('.')
     if (decimals !== undefined && decimals.length >= 2) return
+    // Seven figures is more than a household allowance will ever be, and it is
+    // where the figure stops fitting its panel.
+    if (decimals === undefined && whole.replace('-', '').length >= 7) return
     onChange(value === '0' ? k : value + k)
   }
 

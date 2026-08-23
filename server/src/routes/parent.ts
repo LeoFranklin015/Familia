@@ -9,7 +9,7 @@ import {
   AAVE, aAssetRead, assetRead, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch,
   canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits,
   managerIface, managerRead, MANAGER, parseUnits, planDeposit, planGuardianPay,
-  poolIface, predictScopeId, USDT_PAYMASTER,
+  poolIface, predictScopeId, USDT_PAYMASTER, depositableAmount, type Tx,
 } from '../chain.js'
 import { mustFamily, record, saveFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -24,11 +24,18 @@ function parentOf(c: Context<any, any, any>) {
   return { s, family: mustFamily(s.familyId) }
 }
 
-/** Sum of the period caps of every active scope — the bounded allowance the
- *  manager is trusted with. Never type(uint256).max. */
-function outstandingCaps(family: Family, extra = 0n): bigint {
+/**
+ * Sum of the period caps of every active scope — the bounded allowance the
+ * manager is trusted with. Never type(uint256).max.
+ *
+ * `replacing` excludes one member, for the case where their old scope is
+ * being revoked in the same operation that grants the new one: counting both
+ * would inflate the approval by a cap that is about to stop existing.
+ */
+function outstandingCaps(family: Family, extra = 0n, replacing?: string): bigint {
   let total = extra
   for (const m of family.members) {
+    if (m.id === replacing) continue
     if (m.scopeId && !m.revoked && m.caps) total += parseUnits(m.caps.period)
   }
   return total
@@ -47,6 +54,25 @@ function activeScopeIds(family: Family): string[] {
  */
 function wholeBookFor(family: Family, scopeIds: string[]) {
   return buildAllowlistBatch(scopeIds, { allow: family.recipients.map((r) => r.address) })
+}
+
+/**
+ * Record the result of an operation against the household as it is *now*.
+ *
+ * Every write here holds a snapshot for the fifteen to thirty seconds the
+ * chain takes, and saving that snapshot afterwards silently discards anything
+ * written in between. A child asking to pay during a guardian's grant would
+ * lose the ask — erased from the file while the on-chain request lived on, so
+ * it could never be approved.
+ *
+ * Re-reading is cheap (`getFamily` parses from disk every call) and it is the
+ * only thing making these routes safe to run concurrently.
+ */
+function commit(familyId: string, apply: (family: Family) => void): Family {
+  const fresh = mustFamily(familyId)
+  apply(fresh)
+  saveFamily(fresh)
+  return fresh
 }
 
 /** Wrap a parent write: authorise, act, and translate auth failures into
@@ -83,8 +109,9 @@ parentRoutes.post('/api/deposit', (c) =>
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: 'Deposit did not go through — try again.' }, 502)
 
-    family.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
-    saveFamily(family)
+    commit(family.id, (f) => {
+      f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
+    })
     record(family.id, { kind: 'deposit', text: `You added ${amount} to the balance`, amount: String(amount), txHash: result.txHash })
     return c.json({ txHash: result.txHash, userOpHash: hash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
@@ -97,14 +124,26 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
     const { perTx, period, periodLengthDays = 7, expiryDays = 0 } =
       await bodyOf<{ perTx: string; period: string; periodLengthDays?: number; expiryDays?: number }>(c)
     const periodCap = parseUnits(String(period))
-    const batch = buildGrantBatch({
+
+    // `grant` always mints a new id, so changing someone's limits has to
+    // retire the old scope in the same operation. Leaving it live would mean
+    // lowering a limit didn't lower anything — the old caps still stand — and
+    // worse, the orphan keeps an empty allowlist, which the contract reads as
+    // "any recipient". A household enforcing its book would be handing the
+    // person it just re-granted a permission to pay anyone.
+    const batch: Array<{ to: string; value: bigint; data: string }> = []
+    if (member.scopeId && !member.revoked) {
+      batch.push({ to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('revoke', [member.scopeId]) })
+    }
+
+    batch.push(...buildGrantBatch({
       spender: member.address,
       perTxCap: parseUnits(String(perTx)),
       periodCap,
       periodLength: BigInt(Math.round(Number(periodLengthDays) * 86400)),
       expiry: expiryDays > 0 ? BigInt(Math.floor(Date.now() / 1000) + expiryDays * 86400) : 0n,
-      newAllowanceTotal: outstandingCaps(family, periodCap),
-    })
+      newAllowanceTotal: outstandingCaps(family, periodCap, member.id),
+    }))
 
     // A fresh scope starts with an empty allowlist, which the contract reads
     // as "any recipient". When the household is enforcing its book, that
@@ -121,14 +160,17 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
 
     const scopeId = eventArgFromLogs(result.logs, 'Granted', 'id')
     if (!scopeId) return c.json({ error: 'Granted event missing from receipt' }, 500)
-    member.scopeId = scopeId
-    member.revoked = false
-    member.caps = {
-      perTx: String(perTx), period: String(period),
-      periodLength: Math.round(Number(periodLengthDays) * 86400), expiry: 0,
-    }
-    member.grantTx = result.txHash
-    saveFamily(family)
+    commit(family.id, (f) => {
+      const m = f.members.find((x) => x.id === member.id)
+      if (!m) return
+      m.scopeId = scopeId
+      m.revoked = false
+      m.caps = {
+        perTx: String(perTx), period: String(period),
+        periodLength: Math.round(Number(periodLengthDays) * 86400), expiry: 0,
+      }
+      m.grantTx = result.txHash
+    })
     record(family.id, {
       kind: 'allowance',
       text: `${member.name}'s limits set — ${perTx} a purchase, ${period} a week`,
@@ -142,14 +184,17 @@ parentRoutes.post('/api/members/:id/revoke', (c) =>
     const member = family.members.find((m) => m.id === c.req.param('id'))
     if (!member?.scopeId) return c.json({ error: 'member has no allowance' }, 404)
 
-    member.revoked = true // so the recomputed allowance excludes them
+    // Local only, so the recomputed allowance excludes them. Nothing is
+    // written until the chain agrees.
+    member.revoked = true
     const { hash } = await account.sendTransaction(buildRevokeBatch(member.scopeId, outstandingCaps(family)))
     const result = await waitForUserOp(account, hash)
-    if (!result.success) {
-      member.revoked = false
-      return c.json({ error: 'Revoke failed — try again.' }, 502)
-    }
-    saveFamily(family)
+    if (!result.success) return c.json({ error: 'Revoke failed — try again.' }, 502)
+
+    commit(family.id, (f) => {
+      const m = f.members.find((x) => x.id === member.id)
+      if (m) m.revoked = true
+    })
     record(family.id, { kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
     return c.json({ txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
@@ -267,6 +312,8 @@ async function applyBookChange(
     note: (family: Family) => string
   },
 ): Promise<Response> {
+  // Applied to the in-memory snapshot only, to work out what the batch has to
+  // say. The saved copy is re-derived from disk afterwards.
   const before = family.allowOnly
   spec.edit(family)
 
@@ -277,8 +324,8 @@ async function applyBookChange(
   const txs = enforced && scopeIds.length > 0 ? buildAllowlistBatch(scopeIds, spec.change) : []
 
   if (txs.length === 0) {
-    saveFamily(family)
-    return c.json({ recipients: family.recipients, allowOnly: family.allowOnly, onchain: false })
+    const saved = commit(family.id, spec.edit)
+    return c.json({ recipients: saved.recipients, allowOnly: saved.allowOnly, onchain: false })
   }
 
   return parentWrite(c, async (account) => {
@@ -286,10 +333,12 @@ async function applyBookChange(
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: 'Updating the list on-chain failed — nothing changed.' }, 502)
 
-    saveFamily(family)
-    record(family.id, { kind: 'allowance', text: spec.note(family), txHash: result.txHash })
+    // Re-apply to the household as it is now, not the copy held across the
+    // wait — see `commit`.
+    const saved = commit(family.id, spec.edit)
+    record(family.id, { kind: 'allowance', text: spec.note(saved), txHash: result.txHash })
     return c.json({
-      recipients: family.recipients, allowOnly: family.allowOnly,
+      recipients: saved.recipients, allowOnly: saved.allowOnly,
       onchain: true, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs),
     })
   })
@@ -304,6 +353,27 @@ function randomId(): string {
   return 'r' + Math.random().toString(36).slice(2, 10)
 }
 
+/** Asks carry a 24h on-chain TTL — the same one `requestSpend` was given. */
+const REQUEST_TTL_MS = 24 * 3600 * 1000
+
+function hasExpired(req: { createdAt: number }): boolean {
+  return Date.now() - req.createdAt > REQUEST_TTL_MS
+}
+
+/**
+ * Approving an ask needs head-room beyond the standing allowance.
+ *
+ * Raise it by exactly the request, settle, and put it back — one atomic
+ * operation, so the allowance is never unbounded and never left inflated.
+ */
+function settleApproveBatch(family: Family, requestId: string, amount: bigint): Tx[] {
+  return [
+    { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, outstandingCaps(family, amount)]) },
+    { to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('approveRequest', [requestId]) },
+    { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, outstandingCaps(family)]) },
+  ]
+}
+
 parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
   parentWrite(c, async (account, family) => {
     const req = family.requests.find((r) => r.requestId === c.req.param('requestId'))
@@ -311,24 +381,31 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
     const verdict = c.req.param('verdict')
     if (verdict !== 'approve' && verdict !== 'deny') return c.json({ error: 'unknown verdict' }, 400)
 
-    // Approving needs head-room beyond the standing allowance. Raise it by
-    // exactly the request amount, settle, and put it back — one atomic
-    // operation, so the allowance is never unbounded and never left inflated.
+    // Approving a lapsed ask reverts on-chain and can never succeed. Retire it
+    // instead of offering a retry that will fail identically. Denying still
+    // works — denyRequest doesn't check expiry — so it stays available.
+    if (verdict === 'approve' && hasExpired(req)) {
+      commit(family.id, (f) => {
+        const r = f.requests.find((x) => x.requestId === req.requestId)
+        if (r) r.status = 'expired'
+      })
+      return c.json({ error: 'That ask is more than a day old and has lapsed. Ask them to try again.' }, 409)
+    }
+
     const txs = verdict === 'approve'
-      ? [
-          { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, outstandingCaps(family, parseUnits(req.amount))]) },
-          { to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('approveRequest', [req.requestId]) },
-          { to: AAVE.A_ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [MANAGER, outstandingCaps(family)]) },
-        ]
+      ? settleApproveBatch(family, req.requestId, parseUnits(req.amount))
       : [{ to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('denyRequest', [req.requestId]) }]
 
     const { hash } = await account.sendTransaction(txs)
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: `Could not ${verdict} — try again.` }, 502)
 
-    req.status = verdict === 'approve' ? 'approved' : 'denied'
-    req.txHash = result.txHash
-    saveFamily(family)
+    commit(family.id, (f) => {
+      const r = f.requests.find((x) => x.requestId === req.requestId)
+      if (!r) return
+      r.status = verdict === 'approve' ? 'approved' : 'denied'
+      r.txHash = result.txHash
+    })
     const who = family.members.find((m) => m.id === req.memberId)?.name ?? 'A member'
     record(family.id, {
       kind: verdict === 'approve' ? 'approved' : 'denied',
@@ -381,6 +458,8 @@ function describe(txs: Array<{ to: string; data: string }>): string[] {
   const withdraw = poolIface.getFunction('withdraw')!.selector
   const allowlist = managerIface.getFunction('setAllowlist')!.selector
   const revoke = managerIface.getFunction('revoke')!.selector
+  const approveReq = managerIface.getFunction('approveRequest')!.selector
+  const denyReq = managerIface.getFunction('denyRequest')!.selector
   const steps = txs.flatMap((tx) => {
     const to = tx.to.toLowerCase()
     const sel = tx.data.slice(0, 10)
@@ -390,6 +469,8 @@ function describe(txs: Array<{ to: string; data: string }>): string[] {
     if (to === MANAGER.toLowerCase()) {
       if (sel === allowlist) return ['Write the list on-chain']
       if (sel === revoke) return ['Cancel the permission on-chain']
+      if (sel === approveReq) return ['Let the payment through']
+      if (sel === denyReq) return ['Turn down the ask on-chain']
       return ['Write the limit on-chain']
     }
     return [`Call ${tx.to.slice(0, 10)}…`]
@@ -411,24 +492,44 @@ async function buildForAction(family: Family, address: string, body: Record<stri
       const member = family.members.find((m) => m.id === body.memberId)
       if (!member) throw new Error('unknown member')
       const periodCap = parseUnits(String(body.period ?? '0'))
-      return buildGrantBatch({
+      // Mirror the real batch exactly: retire the old scope, grant the new
+      // one, and carry the book onto it if the household enforces one.
+      const txs: Array<{ to: string; value: bigint; data: string }> = []
+      if (member.scopeId && !member.revoked) {
+        txs.push({ to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('revoke', [member.scopeId]) })
+      }
+      txs.push(...buildGrantBatch({
         spender: member.address,
         perTxCap: parseUnits(String(body.perTx ?? '0')),
         periodCap,
         periodLength: BigInt(Math.round(Number(body.periodLengthDays ?? 7) * 86400)),
         expiry: 0n,
-        newAllowanceTotal: outstandingCaps(family, periodCap),
-      })
+        newAllowanceTotal: outstandingCaps(family, periodCap, member.id),
+      }))
+      if (family.allowOnly && family.recipients.length > 0) {
+        txs.push(...wholeBookFor(family, [await predictScopeId(address, member.address)]))
+      }
+      return txs
     }
     case 'revoke': {
       const member = family.members.find((m) => m.id === body.memberId)
       if (!member?.scopeId) throw new Error('member has no allowance')
-      return buildRevokeBatch(member.scopeId, outstandingCaps(family))
+      return buildRevokeBatch(member.scopeId, outstandingCaps(family, 0n, member.id))
     }
     case 'pay': {
       const plan = await planGuardianPay(address, String(body.to ?? ''), parseUnits(String(body.amount ?? '0')))
       if (!plan.ok) throw new Error(plan.reason)
       return plan.txs
+    }
+    // Settling an ask raises the standing allowance by exactly the request,
+    // approves it, and puts the allowance back — three calls, and until now
+    // the only guardian action with no quote behind it.
+    case 'settle': {
+      const req = family.requests.find((r) => r.requestId === body.requestId)
+      if (!req || req.status !== 'pending') throw new Error('That ask is no longer waiting.')
+      return body.verdict === 'deny'
+        ? [{ to: MANAGER, value: 0n, data: managerIface.encodeFunctionData('denyRequest', [req.requestId]) }]
+        : settleApproveBatch(family, req.requestId, parseUnits(req.amount))
     }
     case 'allowlist': {
       const scopeIds = activeScopeIds(family)
@@ -449,9 +550,10 @@ parentRoutes.get('/api/state', async (c) => {
   if (!ctx) return c.json({ error: 'parent only' }, 403)
   const { s, family } = ctx
 
-  const [pool, loose, paysInUsdt] = await Promise.all([
+  const [pool, loose, addable, paysInUsdt] = await Promise.all([
     aAssetRead.balanceOf(s.address) as Promise<bigint>,
     assetRead.balanceOf(s.address) as Promise<bigint>,
+    depositableAmount(s.address),
     canPayFeesInUsdt(s.address),
   ])
 
@@ -480,6 +582,9 @@ parentRoutes.get('/api/state', async (c) => {
       address: s.address,
       pot: formatUnits(pool),
       loose: formatUnits(loose),
+      // What "Add money" may actually offer: the loose balance minus the fee
+      // headroom this account needs to keep paying its own way.
+      addable: formatUnits(addable),
       vault: AAVE.A_ASSET,
       asset: AAVE.ASSET,
       feeMode: paysInUsdt ? 'usdt' : 'sponsored',
@@ -488,7 +593,8 @@ parentRoutes.get('/api/state', async (c) => {
     },
     activity: family.activity,
     members,
-    pendingRequests: family.requests.filter((r) => r.status === 'pending').map((r) => ({
+    // A lapsed ask is not waiting for anyone: the contract would refuse it.
+    pendingRequests: family.requests.filter((r) => r.status === 'pending' && !hasExpired(r)).map((r) => ({
       ...r, memberName: family.members.find((m) => m.id === r.memberId)?.name ?? '?',
     })),
     recipients: family.recipients,

@@ -43,3 +43,18 @@ export async function authorized<T>(
 
 export const post = <T>(path: string, body: Record<string, unknown>, auth: Approval) =>
   api.post<T>(path, { ...body, auth })
+
+/**
+ * Why an approval didn't happen, in words.
+ *
+ * The authenticator throws for several reasons that all mean "not signed":
+ * the person dismissed the sheet, it timed out, or a second prompt cancelled
+ * the first. None of them are failures of the payment, so none should read
+ * like one.
+ */
+export function approvalProblem(e: unknown): string {
+  const name = (e as { name?: string })?.name
+  if (name === 'NotAllowedError') return 'That was cancelled, or it timed out. Try again when you\u2019re ready.'
+  if (name === 'InvalidStateError') return 'This device already has a different account. Use its passphrase instead.'
+  return 'This device could not confirm it was you. Try again, or use a passphrase.'
+}

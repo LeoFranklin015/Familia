@@ -75,6 +75,7 @@ export function Scan({ onFound, onCancel }: { onFound: (address: string) => void
         }
         void tick()
       } catch (e) {
+        if (stopped) return
         setProblem(
           (e as Error)?.name === 'NotAllowedError'
             ? 'The camera is blocked for this site. Type the address instead.'

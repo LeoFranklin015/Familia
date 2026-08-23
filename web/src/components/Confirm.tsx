@@ -1,4 +1,5 @@
 import { Icon } from './ui'
+import { useDialog } from './useDialog'
 
 /**
  * The last thing between an intention and the chain.
@@ -17,6 +18,8 @@ export type Pending = {
   title: string
   /** The quoted ceiling, already formatted, or null while it is being fetched. */
   fee: string | null
+  /** The quote failed. Signing is still possible; the ceiling just isn't known. */
+  feeUnknown?: boolean
   symbol: string
   /** Members never pay — say so rather than showing a zero. */
   covered?: boolean
@@ -32,12 +35,13 @@ export function Confirm({
   onCancel: () => void
   onPassphrase?: () => void
 }) {
+  const panel = useDialog<HTMLDivElement>(Boolean(pending), onCancel)
   if (!pending) return null
-  const { title, fee, symbol, covered, blocked } = pending
+  const { title, fee, symbol, covered, blocked, feeUnknown } = pending
 
   return (
     <div className="veil veil--auth" onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
         <div className="sheet__grab" aria-hidden="true" />
         <div className="kicker kicker--accent">Confirm it's you</div>
         <div className="sheet__title mt2" style={{ marginBottom: 14 }}>{title}</div>
@@ -48,6 +52,7 @@ export function Confirm({
             <dd>
               {covered ? "Nothing — it's covered"
                 : fee ? `${fee} ${symbol}`
+                : feeUnknown ? <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Couldn&rsquo;t price it</span>
                 : <span className="skel" style={{ display: 'inline-block', width: 78, height: 14 }} />}
             </dd>
           </div>

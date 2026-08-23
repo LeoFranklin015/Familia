@@ -117,7 +117,6 @@ a:hover { color: #fff; }
 }
 .screen--welcome { background: var(--ground-welcome); }
 .screen--step { background: var(--ground-step); }
-.screen--flat { background: var(--bg); }
 
 /* Onboarding-shaped padding: content top, action bottom, nothing in between. */
 .screen__pad {
@@ -139,7 +138,10 @@ a:hover { color: #fff; }
 /* In-app page padding. The tail clears the tab bar; the deeper one also
    clears an action bar sitting above it. */
 .page { padding: max(56px, calc(var(--safe-top) + 16px)) 14px calc(116px + var(--safe-bottom)); }
-.page--action { padding-bottom: calc(196px + var(--safe-bottom)); }
+/* Enough for the bar at its tallest: 24+56+12 plus a two-line hint (~45px)
+   and clearance over the tab bar. Under-reserving hides the last keypad row
+   behind the bar precisely when the amount needs correcting. */
+.page--action { padding-bottom: calc(246px + var(--safe-bottom)); }
 .page--full {
   padding: max(56px, calc(var(--safe-top) + 16px)) 22px calc(42px + var(--safe-bottom));
   min-height: 100%;
@@ -247,6 +249,7 @@ a:hover { color: #fff; }
 .tile__figure {
   font-weight: 600;
   font-size: 23px;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
   margin-top: 8px;
   letter-spacing: -0.03em;
@@ -347,7 +350,7 @@ a:hover { color: #fff; }
   font-weight: 600;
 }
 .pill svg { opacity: 0.75; }
-.pill[aria-pressed='true'] { background: var(--pale); border-color: var(--pale); color: var(--ink); }
+.pill[aria-current='true'] { background: var(--pale); border-color: var(--pale); color: var(--ink); }
 
 /* — the copyable address — */
 .chip {
@@ -461,7 +464,7 @@ a:hover { color: #fff; }
 .amount--empty { color: var(--dim); }
 .amount--over { color: var(--accent); }
 .amount__unit { font-size: 14px; color: var(--faint); align-self: flex-start; padding-top: 9px; }
-.amount__value { font-size: 48px; line-height: 1.1; }
+.amount__value { font-size: clamp(28px, 13vw, 48px); line-height: 1.1; min-width: 0; overflow-wrap: anywhere; }
 
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .key {
@@ -536,7 +539,7 @@ a:hover { color: #fff; }
   text-align: left;
 }
 .person:hover { background: var(--fill-2); }
-.person__name { font-weight: 600; font-size: 15px; }
+.person__name { font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .person__status { font-size: 12.5px; margin-top: 2px; color: var(--muted); }
 .person__status--off { color: var(--faint); }
 .person > svg:last-child { color: var(--faint); flex: none; }
