@@ -21,6 +21,13 @@ export function Sheet({
   const panel = useRef<HTMLDivElement>(null)
   const opener = useRef<Element | null>(null)
 
+  // Callers pass an inline arrow, so `onClose` is a new function on every
+  // render of the screen. Keeping it in a ref is what stops the effect below
+  // re-running on each of the parent's ten-second polls — which re-focused the
+  // first control and moved the caret mid-typing.
+  const close = useRef(onClose)
+  close.current = onClose
+
   useEffect(() => {
     if (!open) return
     opener.current = document.activeElement
@@ -39,7 +46,7 @@ export function Sheet({
     ;(focusables()[0] ?? panel.current)?.focus()
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); if (!hideClose) onClose(); return }
+      if (e.key === 'Escape') { e.preventDefault(); if (!hideClose) close.current(); return }
       if (e.key !== 'Tab') return
       const items = focusables()
       if (items.length === 0) return
@@ -55,7 +62,7 @@ export function Sheet({
       document.body.style.overflow = overflow
       ;(opener.current as HTMLElement | null)?.focus?.()
     }
-  }, [open, onClose, hideClose])
+  }, [open, hideClose])
 
   if (!open) return null
 

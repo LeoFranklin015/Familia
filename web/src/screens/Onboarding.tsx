@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
-import { Mark } from '../components/ui'
+
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
@@ -92,12 +92,41 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
 
       {step === 'welcome' && (
         <div className="splash">
-          <div className="splash__mark"><Mark size={52} /></div>
-          <h1 className="splash__word">kin</h1>
-          <p className="splash__line">Pocket money that can't go wrong.</p>
+          {/* Show the thing, don't describe it: two cards from the real app,
+              stacked and tilted the way they'd sit in a hand. */}
+          <div className="preview" aria-hidden="true">
+            <div className="preview__card preview__card--back">
+              <div className="preview__row">
+                <span className="preview__avatar" style={{ background: '#e7f2eb', color: '#0f5230' }}>S</span>
+                <div>
+                  <div className="preview__name">Sam</div>
+                  <div className="preview__sub">42 left this week</div>
+                </div>
+                <span className="preview__pill">on</span>
+              </div>
+            </div>
+
+            <div className="preview__card preview__card--front">
+              <div className="preview__label">Family balance</div>
+              <div className="preview__figure">500<span>USD₮</span></div>
+              <div className="preview__bar"><i /></div>
+            </div>
+          </div>
+
+          <h1 className="splash__word">Pocket money that can&rsquo;t go wrong</h1>
+          <p className="splash__line">
+            One balance the family shares. You set what each person can spend, and the
+            limits hold on their own.
+          </p>
 
           <div className="splash__foot">
-            <button className="btn btn--primary btn--block" onClick={() => go('names')}>Get started</button>
+            <button className="btn btn--primary btn--block btn--lg" onClick={() => go('names')}>
+              Get started
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 12h15M13 6l6 6-6 6" />
+              </svg>
+            </button>
             <p className="center-row">
               Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
             </p>

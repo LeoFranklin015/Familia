@@ -178,33 +178,44 @@ function Home({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }
 
   return (
     <>
+      {/* Earning, and spent from. The one number this screen is about. */}
       <section className="panel" aria-label="Family balance">
         <div className="panel__label">
           Family balance
           <button className="info" onClick={() => onInfo('balance')} aria-label="Where the money sits">i</button>
         </div>
         <div className="panel__figure num">{st.wallet.pot}<span>{st.symbol}</span></div>
-        <div className="panel__foot">
-          <div className="panel__stat"><b className="num">{st.wallet.loose}</b><span>Available</span></div>
-          <div className="panel__stat"><b className="num">{committed}</b><span>Allowances</span></div>
-        </div>
+        <div className="panel__note">Earning in Aave · in your own account</div>
       </section>
 
-      <button className="btn btn--primary btn--block mt4" onClick={() => { setAmount(''); setAdding(true) }}>
-        Add money
-      </button>
+      {/* A different thing, so a different section: money in the account that
+          is not yet earning, and the only place a deposit can come from. */}
+      <div className="section"><h2>Available to add</h2></div>
+      <div className="tile">
+        <div className="tile__figure num">{st.wallet.loose}<span>{st.symbol}</span></div>
+        <button className="btn btn--primary" onClick={() => { setAmount(''); setAdding(true) }}
+          disabled={Number(st.wallet.loose) === 0}>
+          Add money
+        </button>
+      </div>
+
+      <div className="section">
+        <h2>Allowances</h2>
+        <button className="info" onClick={() => onInfo('committed')} aria-label="Committed to the family">i</button>
+      </div>
+      <dl className="dl">
+        <div className="dl__row"><dt>Promised each week</dt><dd className="num">{committed} {st.symbol}</dd></div>
+        <div className="dl__row"><dt>People spending</dt><dd className="num">{st.members.filter((m) => m.scopeId && !m.revoked).length}</dd></div>
+      </dl>
 
       <div className="section">
         <h2>Account</h2>
         <button className="info" onClick={() => onInfo('fees')} aria-label="Who pays for what">i</button>
       </div>
       <dl className="dl">
-        <div className="dl__row"><dt>Fees paid in</dt><dd>{st.wallet.feeMode === 'usdt' ? st.symbol : 'sponsored'}</dd></div>
+        <div className="dl__row"><dt>You pay fees in</dt><dd>{st.wallet.feeMode === 'usdt' ? st.symbol : 'sponsored'}</dd></div>
         <div className="dl__row"><dt>Family spends</dt><dd>free</dd></div>
-        <div className="dl__row">
-          <dt>Address</dt>
-          <dd className="mono">{st.wallet.address.slice(0, 6)}…{st.wallet.address.slice(-4)}</dd>
-        </div>
+        <div className="dl__row"><dt>Address</dt><dd className="mono">{st.wallet.address.slice(0, 6)}…{st.wallet.address.slice(-4)}</dd></div>
       </dl>
 
       <Sheet open={adding} title="Add money" onClose={() => setAdding(false)}>

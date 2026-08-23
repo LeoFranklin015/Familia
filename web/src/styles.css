@@ -473,20 +473,29 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
     height: min(844px, 92dvh);
     aspect-ratio: 390 / 844;
     width: auto;
-    padding: 10px;
-    border-radius: 54px;
-    background: linear-gradient(168deg, #3d3a37, #191817 42%, #2e2b28);
+    padding: 12px;
+    border-radius: 58px;
+    background: linear-gradient(168deg, #46433f, #161514 44%, #35322e);
     box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.5),
-      0 40px 80px -20px rgb(15 20 17 / 0.45),
-      inset 0 0 0 1.5px rgb(255 255 255 / 0.09);
+      0 0 0 1px rgb(0 0 0 / 0.55),
+      0 50px 90px -26px rgb(15 20 17 / 0.5),
+      inset 0 0 0 2px rgb(255 255 255 / 0.07);
   }
+  /* Side buttons — the detail that stops a rounded rectangle reading as a
+     rounded rectangle. */
+  .device::before,
+  .device::after {
+    content: ""; position: absolute; width: 3px; border-radius: 2px;
+    background: linear-gradient(180deg, #3a3733, #23211f);
+  }
+  .device::before { left: -3px; top: 168px; height: 64px; }
+  .device::after { right: -3px; top: 150px; height: 104px; }
 
   .device__screen {
     position: relative;
     width: 100%;
     height: 100%;
-    border-radius: 44px;
+    border-radius: 46px;
     overflow: hidden;
     overflow-y: auto;
     background: var(--paper);
@@ -514,7 +523,16 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
      respect its rounded screen. */
   .device__screen .tabbar,
   .device__screen .actionbar { max-width: none; }
-  .device__screen .sheet { border-radius: var(--r-sheet) var(--r-sheet) 44px 44px; }
+  .device__screen .sheet { border-radius: var(--r-sheet) var(--r-sheet) 46px 46px; }
+  /* Home indicator, drawn on the bezel rather than inside the app — the app
+     itself must not paint fake system chrome. */
+  .device__screen::after {
+    content: ""; position: fixed; bottom: 8px; left: 50%;
+    transform: translateX(-50%); z-index: 60;
+    width: 134px; height: 5px; border-radius: 3px;
+    background: color-mix(in srgb, var(--ink) 32%, transparent);
+    pointer-events: none;
+  }
 
   .stage__aside { display: none; }
 }
@@ -572,24 +590,88 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 .job .dl, .job .btn { text-align: left; }
 .job .btn { text-align: center; }
 
-/* — splash —
-   The first screen is an arrival, not an explanation: the mark, the name, one
-   line, and the way in sitting where a thumb already is. Anything that
-   describes the product belongs after someone has decided to look. */
-.app--splash { display: flex; flex-direction: column; min-height: 100dvh; }
-.splash {
-  flex: 1; display: flex; flex-direction: column;
-  padding-top: 18dvh;
+/* — first run —
+   Show the product rather than describe it: two real cards from the app,
+   stacked and tilted, over a soft wash. Then one centred claim, one line of
+   support, and the way in. */
+.app--splash {
+  display: flex; flex-direction: column; min-height: 100dvh;
+  background:
+    radial-gradient(120% 60% at 50% 0%, var(--accent-soft) 0%, transparent 62%),
+    var(--paper);
 }
-.splash__mark { color: var(--accent); }
+.splash { flex: 1; display: flex; flex-direction: column; text-align: center; }
+
+.preview {
+  position: relative; height: 208px; margin: var(--s5) 0 var(--s8);
+  perspective: 900px;
+}
+.preview__card {
+  position: absolute; left: 50%; width: 264px;
+  padding: var(--s4); border-radius: 16px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 18px 34px -22px rgb(18 24 20 / 0.45);
+}
+.preview__card--back {
+  top: 0; transform: translateX(-50%) rotate(-3.2deg);
+  opacity: 0.94;
+}
+.preview__card--front {
+  top: 88px; transform: translateX(-50%) rotate(2.4deg);
+  background: linear-gradient(156deg, #1b2620, #121a15);
+  border-color: transparent; color: #f4f6f4;
+}
+.preview__row { display: flex; align-items: center; gap: var(--s3); }
+.preview__avatar {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: 0.85rem;
+}
+.preview__name { font-weight: 650; font-size: 0.92rem; }
+.preview__sub { font-size: 0.76rem; color: var(--ink-3); margin-top: 1px; }
+.preview__pill {
+  margin-left: auto; padding: 2px 9px; border-radius: var(--r-pill);
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 0.7rem; font-weight: 700;
+}
+.preview__label {
+  font-size: 0.68rem; font-weight: 650; letter-spacing: 0.08em;
+  text-transform: uppercase; color: rgb(244 246 244 / 0.5);
+}
+.preview__figure {
+  margin-top: var(--s2);
+  font-size: 2rem; font-weight: 700; letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+.preview__figure span { font-size: 0.8rem; font-weight: 650; color: rgb(244 246 244 / 0.5); margin-left: 6px; }
+.preview__bar {
+  margin-top: var(--s4); height: 5px; border-radius: 3px;
+  background: rgb(244 246 244 / 0.14); overflow: hidden;
+}
+.preview__bar i { display: block; width: 62%; height: 100%; border-radius: 3px; background: var(--accent); }
+
 .splash__word {
-  margin-top: var(--s5);
-  font-size: 2.9rem; font-weight: 700; letter-spacing: -0.045em; line-height: 1;
+  font-size: 2rem; font-weight: 700; letter-spacing: -0.032em; line-height: 1.12;
+  text-wrap: balance;
 }
 .splash__line {
-  margin-top: var(--s3);
-  font-size: 1.12rem; line-height: 1.4; color: var(--ink-2);
-  max-width: 17ch; text-wrap: balance;
+  margin: var(--s3) auto 0; max-width: 30ch;
+  font-size: 1rem; line-height: 1.5; color: var(--ink-2); text-wrap: pretty;
 }
 .splash__foot { margin-top: auto; padding-bottom: var(--s4); }
+.btn--lg { min-height: 56px; font-size: 1.05rem; border-radius: 15px; }
 .stage__mark { color: var(--accent); margin-bottom: var(--s3); }
+
+.panel__note {
+  margin-top: var(--s3); font-size: 0.78rem;
+  color: rgb(244 246 244 / 0.5);
+}
+
+/* A section that pairs one figure with its one action. */
+.tile {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s4); padding: var(--s4) 0;
+}
+.tile__figure {
+  font-size: 1.6rem; font-weight: 700; letter-spacing: -0.028em;
+}
+.tile__figure span { font-size: 0.82rem; font-weight: 650; color: var(--ink-2); margin-left: 5px; }
