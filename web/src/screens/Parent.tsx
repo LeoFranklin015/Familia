@@ -105,10 +105,15 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     if (!st) return
     const symbol = st.symbol
 
-    // The quote knows the real step list, because it builds the real batch.
-    // It lands after the sheet is already up, so the plan is held here and
-    // read when the person actually commits.
-    const plan = { steps: spec.steps, covered: false }
+    // The quote settles the price. It does *not* get to rewrite the steps:
+    // `describe()` names the calls in the batch, which is implementation
+    // detail, while the caller's list says what happens in the person's own
+    // terms. Approving a child's ask is one `approveRequest` call, so the
+    // quote calls it "Let the payment through" — but what actually happens is
+    // money coming out of Aave and reaching the shop, which is what the
+    // caller wrote and what the person should read. Quote steps are a
+    // fallback for callers that give none.
+    const plan = { steps: spec.steps, covered: false, quote: null as string | null }
 
     const run = async (approval: Approval) => {
       // One UserOperation. Every call in the batch lands together on
@@ -116,7 +121,14 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       // animating them one by one would be inventing progress that doesn't
       // exist.
       setPending(null)
-      setOp({ title: spec.title, steps: plan.steps, done: 0, status: 'running', symbol, covered: plan.covered })
+      setOp({
+        title: spec.title, steps: plan.steps, done: 0, status: 'running',
+        symbol, covered: plan.covered,
+        // The same ceiling the confirmation sheet showed. Without it the
+        // modal's "fee, at most" row sat empty for the whole twenty seconds,
+        // having just been quoted a number on the previous screen.
+        quote: plan.quote,
+      })
       try {
         const res = await spec.call(approval)
         setOp((o) => o && {
@@ -145,11 +157,15 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
 
     setPending({ title: spec.title, fee: null, symbol, run: start })
 
-    if (!spec.quote) { setPending((p) => p && { ...p, fee: '0' }); return }
+    // Nothing to price against means we genuinely don't know, and "0" would
+    // be a claim rather than an absence. Every caller quotes today; this is
+    // the honest floor if one ever stops.
+    if (!spec.quote) { setPending((p) => p && { ...p, feeUnknown: true }); return }
     api.post<FeeQuote>('/api/quote', spec.quote)
       .then((q) => {
-        if (q.steps?.length) plan.steps = q.steps
+        if (q.steps?.length && spec.steps.length === 0) plan.steps = q.steps
         plan.covered = q.feeMode === 'sponsored'
+        plan.quote = q.fee ?? null
         setPending((p) => p && {
           ...p, fee: q.fee ?? null, covered: plan.covered, blocked: q.blocked,
         })

@@ -70,7 +70,7 @@ export function OpModal({ op, onClose }: { op: Op | null; onClose: () => void })
 
         <dl className="dl" style={{ marginTop: 6 }}>
           <div className="dl__row">
-            <dt>{running ? 'Fee, at most' : 'Fee charged'}</dt>
+            <dt>{running ? 'Network fee' : 'Fee charged'}</dt>
             <dd>{feeText(op)}</dd>
           </div>
         </dl>
@@ -117,6 +117,9 @@ export function OpModal({ op, onClose }: { op: Op | null; onClose: () => void })
 function feeText(op: Op): string {
   if (op.status === 'failed') return 'Nothing'
   if (op.covered) return "Nothing — it's covered"
-  if (op.status === 'running') return op.quote ? `${op.quote} ${op.symbol}` : '—'
-  return op.charged ? `${op.charged} ${op.symbol}` : `0 ${op.symbol}`
+  if (op.status === 'running') return op.quote ? `Up to ${op.quote} ${op.symbol}` : '…'
+  // No `Charged` event from our paymaster means it didn't take anything —
+  // the operation was sponsored after all. Say that, rather than printing a
+  // zero that reads like a measurement.
+  return op.charged ? `${op.charged} ${op.symbol}` : 'Nothing'
 }
