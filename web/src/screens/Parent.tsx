@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type FeeQuote, type ParentState } from '../api'
 import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
 import { Sheet } from '../components/Sheet'
+import { AccountButton, AccountSheet } from '../components/Account'
 import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { figureSize, Figure, floor2, Icon, InfoButton, ScreenSkeleton, shortAddress, two } from '../components/ui'
@@ -238,7 +239,13 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
 
       {toast && <div className="toast" role="status">{toast}</div>}
 
-      <Sheet open={sheet === 'fees'} title="Account & fees" onClose={() => setSheet(null)}>
+      <AccountSheet
+        open={sheet === 'fees'}
+        onClose={() => setSheet(null)}
+        name={st.you?.name ?? 'You'}
+        role={`${st.familyName} household · you set the limits`}
+        onSignOut={lock}
+      >
         <dl className="dl">
           <div className="dl__row">
             <dt>You pay fees in</dt>
@@ -259,11 +266,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           else ever sees a fee. We quote a ceiling before you sign and charge what
           it actually cost.
         </p>
-        <button className="btn btn--quiet tap mt4" onClick={() => setSheet(null)}>Got it</button>
-        <button className="link tap mt2" style={{ display: 'block', margin: '10px auto 0' }} onClick={lock}>
-          Sign out
-        </button>
-      </Sheet>
+      </AccountSheet>
 
       {/* Mounted only while open, so the amount starts empty every time —
           adding money closes the sheet from the outside, which never runs its
@@ -364,7 +367,7 @@ function Home({
     <div className="page">
       <div className="sec">
         <div className="kicker">{st.familyName} household</div>
-        <InfoButton label="Account and fees" onClick={onFees} />
+        <AccountButton initial={st.you?.name?.[0] ?? 'K'} onOpen={onFees} />
       </div>
 
       <div className="balance">

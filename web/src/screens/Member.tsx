@@ -4,12 +4,13 @@ import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Appr
 import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { Sheet } from '../components/Sheet'
+import { AccountButton, AccountSheet } from '../components/Account'
 import { AmountStep, label, looksLikeAddress, match, WhoStep } from '../components/Pay'
 import { Scan, scanningSupported } from '../components/Scan'
 import { base, Blob, Figure, fromBase, Icon, ScreenSkeleton, split, two } from '../components/ui'
 import { resetDay, when } from './Activity'
 
-type Tab = 'pay' | 'activity'
+type Tab = 'home' | 'pay' | 'activity'
 
 /**
  * The whole app, for a kid.
@@ -25,11 +26,12 @@ type Tab = 'pay' | 'activity'
  */
 export default function Member({ onLogout }: { onLogout: () => void }) {
   const [me, setMe] = useState<MemberState | null>(null)
-  const [tab, setTab] = useState<Tab>('pay')
+  const [tab, setTab] = useState<Tab>('home')
   const [step, setStep] = useState<'who' | 'amount'>('who')
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [scan, setScan] = useState(false)
+  const [account, setAccount] = useState(false)
   const [op, setOp] = useState<Op | null>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [askPass, setAskPass] = useState<((a: Approval) => void) | null>(null)
@@ -171,7 +173,10 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       <div className="screen">
         <div className="scroll">
           <div className="page--full">
-            <div className="kicker">{me.familyName} household</div>
+            <div className="sec">
+              <div className="kicker">{me.familyName} household</div>
+              <AccountButton initial={me.name[0] ?? 'K'} onOpen={() => setAccount(true)} />
+            </div>
             <div className="spacer" />
             <div className="markbox" style={{ marginBottom: 20 }}>
               <Icon name="lock" size={24} />
@@ -186,51 +191,80 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             </p>
             <div className="spacer" />
             <div className="kicker kicker--faint">Nothing here belongs to you yet</div>
-            <button className="link tap mt3" style={{ alignSelf: 'flex-start', paddingLeft: 0 }} onClick={lock}>
-              Sign out
-            </button>
           </div>
         </div>
+
+        <AccountSheet
+          open={account}
+          onClose={() => setAccount(false)}
+          name={me.name}
+          role={`${me.familyName} household`}
+          onSignOut={lock}
+        />
       </div>
     )
   }
 
   return (
     <div className="screen">
-      {tab === 'pay' ? (
+      {tab === 'home' && (
+        <div className="scroll"><div className="page">
+          <div className="sec">
+            <div className="kicker">{me.familyName} household</div>
+            <AccountButton initial={me.name[0] ?? 'K'} onOpen={() => setAccount(true)} />
+          </div>
+
+          <div className="balance">
+            <div className="kicker">Left this week</div>
+            <div style={{ marginTop: 12 }}>
+              <Figure value={fromBase(weekLeft)} unit={me.symbol} />
+            </div>
+            <div className="chip chip--static mt3">
+              <Icon name="lock" size={14} />
+              <span className="num">{two(me.limit)} max in one go</span>
+            </div>
+          </div>
+
+          <div className="pair mt2">
+            <div className="tile">
+              <div className="tile__label">Spent this week</div>
+              <div className="tile__figure">{two(me.spentThisPeriod)}</div>
+              <div className="tile__note">of {two(me.period)}</div>
+            </div>
+            <div className="tile tile--pale">
+              <div className="tile__label">Starts again</div>
+              <div className="tile__figure">{resetDay(me.resetsAt)}</div>
+              <div className="tile__note">the week resets</div>
+            </div>
+          </div>
+
+          <button className="btn tap mt4" onClick={() => { setStep('who'); setTab('pay') }}>
+            <Icon name="pay" size={18} />
+            Pay someone
+          </button>
+
+          {me.activity.length > 0 && (
+            <>
+              <div className="sec sec--top">
+                <div className="kicker kicker--muted">Recent</div>
+                <button className="link tap" style={{ fontSize: 12.5 }} onClick={() => setTab('activity')}>
+                  All of it
+                </button>
+              </div>
+              <MyActivity items={me.activity.slice(0, 3)} />
+            </>
+          )}
+        </div></div>
+      )}
+
+      {tab === 'pay' && (
         step === 'who' ? (
           <WhoStep
             context={
-              <>
-                <div className="sec">
-                  <div className="kicker">{me.familyName} household</div>
-                  <span className="avatar avatar--xs">{me.name[0]?.toUpperCase()}</span>
-                </div>
-
-                <div className="balance">
-                  <div className="kicker">Left this week</div>
-                  <div style={{ marginTop: 12 }}>
-                    <Figure value={fromBase(weekLeft)} unit={me.symbol} />
-                  </div>
-                  <div className="chip chip--static mt3">
-                    <Icon name="lock" size={14} />
-                    <span className="num">{two(me.limit)} max in one go</span>
-                  </div>
-                </div>
-
-                <div className="pair mt2">
-                  <div className="tile">
-                    <div className="tile__label">Spent this week</div>
-                    <div className="tile__figure">{two(me.spentThisPeriod)}</div>
-                    <div className="tile__note">of {two(me.period)}</div>
-                  </div>
-                  <div className="tile tile--pale">
-                    <div className="tile__label">Starts again</div>
-                    <div className="tile__figure">{resetDay(me.resetsAt)}</div>
-                    <div className="tile__note">the week resets</div>
-                  </div>
-                </div>
-              </>
+              <div className="sec">
+                <div className="kicker">Pay someone</div>
+                <AccountButton initial={me.name[0] ?? 'K'} onOpen={() => setAccount(true)} />
+              </div>
             }
             value={to}
             onChange={setTo}
@@ -264,12 +298,14 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             }
           />
         )
-      ) : (
-        <div className="scroll"><MyWeek me={me} onLock={lock} /></div>
+      )}
+
+      {tab === 'activity' && (
+        <div className="scroll"><MyWeek me={me} onAccount={() => setAccount(true)} /></div>
       )}
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
-        {([['pay', 'Pay', 'pay'], ['activity', 'Activity', 'activity']] as const).map(([id, text, icon]) => (
+        {([['home', 'Home', 'home'], ['pay', 'Pay', 'pay'], ['activity', 'Activity', 'activity']] as const).map(([id, text, icon]) => (
           <button
             key={id} role="tab" aria-selected={tab === id}
             className={`tab tap${tab === id ? ' tab--on' : ''}`}
@@ -288,6 +324,35 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       </nav>
 
       {scan && <Scan onCancel={() => setScan(false)} onFound={(a) => { setTo(a); setScan(false) }} />}
+
+      <AccountSheet
+        open={account}
+        onClose={() => setAccount(false)}
+        name={me.name}
+        role={`${me.familyName} household`}
+        onSignOut={lock}
+      >
+        {me.hasAllowance && (
+          <dl className="dl">
+            <div className="dl__row">
+              <dt>Most per purchase</dt>
+              <dd>{two(me.limit)} {me.symbol}</dd>
+            </div>
+            <div className="dl__row">
+              <dt>Most per week</dt>
+              <dd>{two(me.period)} {me.symbol}</dd>
+            </div>
+            <div className="dl__row">
+              <dt>Network fees</dt>
+              <dd><span className="badge">Sponsored</span></dd>
+            </div>
+          </dl>
+        )}
+        <p className="hint mt3">
+          Your limits are held by the contract, not by this app, and only
+          someone at home can change them.
+        </p>
+      </AccountSheet>
 
       <Sheet open={Boolean(askPass)} title="Confirm it's you" onClose={() => setAskPass(null)}>
         <p className="hint">This device can&rsquo;t use Face ID, so your passphrase approves it.</p>
@@ -318,7 +383,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
  * A kid's question is never "what is my period cap", it's "how much is left" —
  * and a filling ring answers that at a glance in a way two numbers never do.
  */
-function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
+function MyWeek({ me, onAccount }: { me: MemberState; onAccount: () => void }) {
   const period = Number(me.period ?? 0)
   const spent = Number(me.spentThisPeriod)
   const fraction = period > 0 ? Math.min(1, spent / period) : 0
@@ -327,7 +392,10 @@ function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
 
   return (
     <div className="page">
-      <div className="kicker" style={{ padding: '0 8px' }}>This week</div>
+      <div className="sec">
+        <div className="kicker">This week</div>
+        <AccountButton initial={me.name[0] ?? 'K'} onOpen={onAccount} />
+      </div>
 
       <div className="ring">
         <Blob size={44} left={16} top={26} rotate={-16} opacity={0.5} />
@@ -370,39 +438,48 @@ function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
       {me.activity.length > 0 ? (
         <div style={{ marginTop: 22 }}>
           <div className="kicker kicker--muted" style={{ padding: '0 8px 6px' }}>Yours</div>
-          {me.activity.map((a) => {
-            const waiting = a.kind === 'ask'
-            return (
-              <div
-                key={a.id}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderTop: '1px solid var(--line)' }}
-              >
-                <span
-                  className="avatar avatar--sm"
-                  style={{
-                    background: 'var(--fill-2)', borderColor: 'transparent',
-                    color: waiting ? 'var(--accent)' : 'var(--muted)',
-                  }}
-                >
-                  <Icon name={waiting ? 'activity' : 'shop'} size={16} />
-                </span>
-                <span className="row__body">
-                  <span style={{ display: 'block', fontSize: 13.5, lineHeight: 1.4 }}>{a.text}</span>
-                  <span style={{ display: 'block', fontSize: 11, marginTop: 2, color: 'var(--faint)' }}>
-                    {when(a.at)}
-                  </span>
-                </span>
-                {waiting && <span className="tag tag--waiting">waiting</span>}
-              </div>
-            )
-          })}
+          <MyActivity items={me.activity} />
         </div>
       ) : (
         <p className="empty mt5">Nothing spent yet. What you pay for shows up here.</p>
       )}
-      <button className="link tap mt5" style={{ display: 'block', margin: '26px auto 0' }} onClick={onLock}>
-        Sign out
-      </button>
     </div>
+  )
+}
+
+/**
+ * A member's own history: what they paid for, and what is still waiting on
+ * someone at home. Never anyone else's.
+ */
+function MyActivity({ items }: { items: MemberState['activity'] }) {
+  return (
+    <>
+      {items.map((a) => {
+        const waiting = a.kind === 'ask'
+        return (
+          <div
+            key={a.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', borderTop: '1px solid var(--line)' }}
+          >
+            <span
+              className="avatar avatar--sm"
+              style={{
+                background: 'var(--fill-2)', borderColor: 'transparent',
+                color: waiting ? 'var(--accent)' : 'var(--muted)',
+              }}
+            >
+              <Icon name={waiting ? 'activity' : 'shop'} size={16} />
+            </span>
+            <span className="row__body">
+              <span style={{ display: 'block', fontSize: 13.5, lineHeight: 1.4 }}>{a.text}</span>
+              <span style={{ display: 'block', fontSize: 11, marginTop: 2, color: 'var(--faint)' }}>
+                {when(a.at)}
+              </span>
+            </span>
+            {waiting && <span className="tag tag--waiting">waiting</span>}
+          </div>
+        )
+      })}
+    </>
   )
 }

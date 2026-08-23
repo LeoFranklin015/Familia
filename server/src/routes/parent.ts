@@ -573,6 +573,8 @@ parentRoutes.get('/api/state', async (c) => {
   return c.json({
     familyName: family.name,
     symbol: AAVE.SYMBOL,
+    // Who is signed in, for the account corner.
+    you: { name: family.parent?.name ?? 'You', address: s.address },
     wallet: {
       address: s.address,
       pot: formatUnits(pool),

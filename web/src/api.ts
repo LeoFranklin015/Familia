@@ -66,6 +66,8 @@ export type Activity = {
 export type ParentState = {
   familyName: string
   symbol: string
+  /** The signed-in guardian. */
+  you: { name: string; address: string }
   wallet: {
     address: string
     pot: string
