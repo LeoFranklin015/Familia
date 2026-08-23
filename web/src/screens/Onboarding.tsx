@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { api } from '../api'
-import { knownCredentialId, rememberCredentialId } from '../auth'
+import { api, type Identity } from '../api'
+import { forgetAccount, knownAccounts, rememberAccount, type KnownAccount } from '../auth'
 import { createPasskey, unlockPasskey } from '../webauthn'
 import { KeyChoice } from '../components/KeyChoice'
 import { Icon, Mark } from '../components/ui'
+import { Check } from './family/rows'
 import family from '../assets/family.svg'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
@@ -22,7 +23,12 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   const [parentName, setParentName] = useState('')
   const [token, setToken] = useState('')
   const [passphrase, setPassphrase] = useState('')
-  // Only asked for when this browser has no credential of its own to offer.
+  // The accounts this browser knows, and which one is being signed into. Read
+  // once: localStorage does not change under us, and reading it in render made
+  // every keystroke touch it.
+  const [accounts, setAccounts] = useState<KnownAccount[]>(() => knownAccounts())
+  const [picked, setPicked] = useState<KnownAccount | null>(() => knownAccounts()[0] ?? null)
+  // Only asked for when the account being signed into is not one of those.
   const [address, setAddress] = useState('')
   const [usePassphrase, setUsePassphrase] = useState(false)
   const [err, setErr] = useState('')
@@ -43,8 +49,8 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   }
 
   const finish = async (body: Record<string, string>) => {
-    const r = await api.post<{ credentialId: string }>(`/api/join/${token}`, body)
-    rememberCredentialId(r.credentialId)
+    const r = await api.post<Identity>(`/api/join/${token}`, body)
+    rememberAccount({ ...r, prf: Boolean(body.prfKeyHex) })
     onReady()
   }
 
@@ -69,11 +75,16 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   const signInFaceId = async () => {
     setErr(''); setBusy(true)
     try {
+      // Unscoped on purpose: the authenticator offers whichever passkeys this
+      // device holds for the site, which is the right picker to show someone
+      // who is signing in rather than approving a payment.
       const pk = await unlockPasskey()
       if (!pk) throw new Error('This device could not use a passkey. Try your passphrase.')
-      await api.post('/api/session', { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
+      const r = await api.post<Identity>('/api/session', {
+        credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex,
+      })
       // Without this the passphrase fallback has no credential to unlock.
-      rememberCredentialId(pk.credentialId)
+      rememberAccount({ ...r, prf: true })
       onReady()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not sign in.')
@@ -92,10 +103,10 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   const signInPassphrase = async () => {
     setErr(''); setBusy(true)
     try {
-      const credentialId = knownCredentialId()
-      await api.post('/api/session', credentialId
-        ? { credentialId, passphrase }
+      const r = await api.post<Identity>('/api/session', picked
+        ? { credentialId: picked.credentialId, passphrase }
         : { address: address.trim(), passphrase })
+      rememberAccount({ ...r, prf: false })
       onReady()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not sign in.')
@@ -211,15 +222,63 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
             <div className="spacer" />
             <h2 className="title" style={{ marginBottom: 10 }}>Welcome back.</h2>
             <p className="lede">
-              {knownCredentialId()
-                ? 'Same face, same account.'
-                : 'This browser is new here, so say which account is yours.'}
+              {picked
+                ? `Signing in as ${picked.name}${picked.familyName ? `, ${picked.familyName}` : ''}.`
+                : accounts.length
+                  ? 'Which account is this?'
+                  : 'Your face is the key. A passphrase works too.'}
             </p>
             <div className="spacer" />
 
-            {/* Nothing to identify the account with, so ask. A passkey supplies
-                its own credential and skips this entirely. */}
-            {!knownCredentialId() && usePassphrase && (
+            {/* The accounts this browser already knows. A household shares a
+                phone, so offer the choice rather than assuming whoever went
+                last is whoever is here now. */}
+            {accounts.length > 0 && (
+              <div style={{ marginBottom: 18 }}>
+                {accounts.map((a) => (
+                  <div key={a.credentialId} className="recipient">
+                    <button
+                      className="row__pick tap"
+                      aria-pressed={picked?.credentialId === a.credentialId}
+                      onClick={() => { setErr(''); setPicked(a); setUsePassphrase(!a.prf) }}
+                    >
+                      <Check on={picked?.credentialId === a.credentialId} />
+                      <span className="avatar avatar--sm">{a.name[0]?.toUpperCase() ?? '?'}</span>
+                      <span className="row__body">
+                        <span className="recipient__name">{a.name}</span>
+                        <span className="recipient__addr">
+                          {a.familyName ? `${a.familyName} · ` : ''}
+                          {a.prf ? 'Face ID' : 'Passphrase'}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      className="link tap link--sm"
+                      onClick={() => {
+                        forgetAccount(a.credentialId)
+                        const left = knownAccounts()
+                        setAccounts(left)
+                        if (picked?.credentialId === a.credentialId) setPicked(left[0] ?? null)
+                      }}
+                    >
+                      Forget
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  className="link tap mt3"
+                  onClick={() => { setErr(''); setPicked(null); setUsePassphrase(true) }}
+                >
+                  Another account
+                </button>
+              </div>
+            )}
+
+            {/* Nothing on this browser identifies the account, so it is named
+                by its address. That is the way back in after a browser is
+                cleared, and the only one a passphrase account has. */}
+            {!picked && (
               <label className="field">
                 <span>Your account address</span>
                 <input
@@ -227,6 +286,9 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
                   autoCapitalize="off" autoComplete="username"
                   onChange={(e) => setAddress(e.target.value)}
                 />
+                <span className="hint" style={{ marginTop: 7 }}>
+                  It is on your home screen, under the balance.
+                </span>
               </label>
             )}
 
@@ -241,7 +303,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               working="Opening…"
               onFaceId={signInFaceId}
               onSubmit={signInPassphrase}
-              blocked={!knownCredentialId() && !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
+              blocked={!picked && !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
             />
             <button className="link tap mt2" style={{ alignSelf: 'center' }} onClick={() => go('welcome')}>Back</button>
           </>

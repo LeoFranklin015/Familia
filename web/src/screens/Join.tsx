@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
-import { rememberCredentialId } from '../auth'
+import { api, type Identity } from '../api'
+import { rememberAccount } from '../auth'
 import { createPasskey } from '../webauthn'
 import { KeyChoice } from '../components/KeyChoice'
 import { Blob, Icon, Skeleton } from '../components/ui'
@@ -29,8 +29,8 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
   }, [token])
 
   const finish = async (body: Record<string, string>) => {
-    const r = await api.post<{ credentialId: string }>(`/api/join/${token}`, body)
-    rememberCredentialId(r.credentialId)
+    const r = await api.post<Identity>(`/api/join/${token}`, body)
+    rememberAccount({ ...r, prf: Boolean(body.prfKeyHex) })
     onJoined()
   }
 

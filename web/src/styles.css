@@ -1412,3 +1412,17 @@ a:hover { color: #fff; }
   .orbit__arm--2 { transform: rotate(198deg); }
   .orbit__arm--3 { transform: rotate(303deg); }
 }
+
+/* A row that is itself the choice, with a separate action beside it. */
+.row__pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}

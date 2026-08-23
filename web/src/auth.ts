@@ -32,20 +32,64 @@ export async function approve(): Promise<Approval> {
 }
 
 /**
- * The credential this browser last used.
+ * An account this browser has signed into before.
  *
- * Both halves live here. Three screens used to spell the storage key by hand
- * while only this file read it back, which is how signing in on a second
- * device left the passphrase fallback with no credential to unlock.
+ * Enough to show a person which one they are picking, and nothing more: no key
+ * material, and nothing that is not already on a screen in the app.
  */
-const CREDENTIAL_KEY = 'kin_credentialId'
-
-export function knownCredentialId(): string | null {
-  return localStorage.getItem(CREDENTIAL_KEY)
+export type KnownAccount = {
+  credentialId: string
+  address: string
+  name: string
+  familyName: string
+  /** Whether it signs in with a passkey or a passphrase. */
+  prf: boolean
 }
 
-export function rememberCredentialId(id: string): void {
-  localStorage.setItem(CREDENTIAL_KEY, id)
+/**
+ * The accounts this browser knows.
+ *
+ * A list rather than one, because a phone gets used by a household: a guardian
+ * and a child can both have signed in here, and a shared browser should offer
+ * the choice rather than silently keeping whoever went last.
+ *
+ * Most recent first, which is what the sign-in screen defaults to.
+ */
+const ACCOUNTS_KEY = 'kin_accounts'
+const LEGACY_KEY = 'kin_credentialId'
+
+export function knownAccounts(): KnownAccount[] {
+  try {
+    const raw = localStorage.getItem(ACCOUNTS_KEY)
+    if (raw) return JSON.parse(raw) as KnownAccount[]
+  } catch { /* corrupt or unreadable: treat as none rather than crashing sign-in */ }
+
+  // Written before this browser knew about a list. Keep the account so a
+  // passphrase still has something to unlock, even without a name to show.
+  const legacy = localStorage.getItem(LEGACY_KEY)
+  return legacy
+    ? [{ credentialId: legacy, address: '', name: 'Your account', familyName: '', prf: !legacy.startsWith('pass:') }]
+    : []
+}
+
+/** The one to reach for by default, and what the passkey prompt is scoped to. */
+export function knownCredentialId(): string | null {
+  return knownAccounts()[0]?.credentialId ?? null
+}
+
+/** Remember an account, or move it to the front if it is already known. */
+export function rememberAccount(account: KnownAccount): void {
+  const rest = knownAccounts().filter((a) => a.credentialId !== account.credentialId)
+  try {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([account, ...rest].slice(0, 8)))
+    localStorage.removeItem(LEGACY_KEY)
+  } catch { /* private mode, or a full quota: signing in still worked */ }
+}
+
+/** Take one off this browser. The account itself is untouched. */
+export function forgetAccount(credentialId: string): void {
+  const rest = knownAccounts().filter((a) => a.credentialId !== credentialId)
+  try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(rest)) } catch { /* as above */ }
 }
 
 /**

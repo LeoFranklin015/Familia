@@ -89,7 +89,7 @@ joinRoutes.post('/api/join/:token', async (c) => {
   // still hold the mnemonic — and disposes it when done.
   if (isParent) bootstrapParent({ familyId: family.id, address, mnemonic })
 
-  return c.json({ role: session.role, address, credentialId, familyName: family.name })
+  return c.json({ role: session.role, address, credentialId, name: invite.name, familyName: family.name })
 })
 
 /**
@@ -152,7 +152,10 @@ joinRoutes.post('/api/session', async (c) => {
     credentialId: vault.credentialId, address: vault.address, name: vault.name,
   })
   setCookie(c, COOKIE, session.id, { httpOnly: true, sameSite: 'Lax', path: '/' })
-  return c.json({ role: session.role, address: vault.address, familyName: family.name })
+  return c.json({
+    role: session.role, address: vault.address, credentialId: vault.credentialId,
+    name: vault.name, familyName: family.name,
+  })
 })
 
 joinRoutes.post('/api/logout', async (c) => {

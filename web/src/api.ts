@@ -38,6 +38,15 @@ export const api = {
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
 }
 
+/** What signing in or joining hands back, and what a browser remembers of it. */
+export type Identity = {
+  role: 'parent' | 'member'
+  address: string
+  credentialId: string
+  name: string
+  familyName: string
+}
+
 export type Whoami = {
   role: 'parent' | 'member' | null
   address?: string
