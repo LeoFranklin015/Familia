@@ -126,8 +126,10 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       <nav className="tabbar" role="tablist" aria-label="Sections">
         {([['home', 'Home', <Icon.home key="p" />], ['family', 'Family', <Icon.family key="f" />], ['activity', 'Activity', <Icon.activity key="a" />]] as const)
           .map(([id, label, icon]) => (
-            <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id as Tab)}>
-              {icon}{label}
+            <button key={id} role="tab" aria-selected={tab === id} className="tab"
+              aria-label={label} onClick={() => setTab(id as Tab)}>
+              {icon}
+              <span className="tab__label">{label}</span>
               {id === 'family' && asks.length > 0 && <span className="tab__badge" aria-label={`${asks.length} waiting`} />}
             </button>
           ))}

@@ -22,8 +22,10 @@ app.route('/', memberRoutes)
 // Our ERC-7677 paymaster service, so USD₮ can be the gas token here.
 app.route('/', paymasterService)
 
-// The built web app; /join/<token> etc. fall through to the SPA.
+// The built web app; /join/<token> etc. fall through to the SPA. Fonts need
+// their own route — without it they hit the catch-all and get index.html.
 app.use('/assets/*', serveStatic({ root: '../web/dist' }))
+app.use('/fonts/*', serveStatic({ root: '../web/dist' }))
 app.get('*', serveStatic({ root: '../web/dist', path: 'index.html' }))
 
 const port = Number(process.env.PORT ?? 8787)

@@ -1,3 +1,18 @@
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('/fonts/instrument-sans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('/fonts/instrument-serif.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Kin — household money, shared and bounded.
  *
  * A quiet ledger, built for a phone. Ink on paper, one deep green for money
@@ -75,7 +90,9 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  /* Instrument Sans for everything functional; the serif is reserved for the
+     two display moments below. Self-hosted, so nothing is fetched at runtime. */
+  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* Removes the 300ms tap delay and the grey flash — most of what makes a web
@@ -93,7 +110,7 @@ body {
   padding: calc(var(--safe-top) + var(--s3)) var(--s5) 0;
   padding-bottom: var(--pad-bottom, calc(var(--safe-bottom) + var(--s8)));
 }
-.app--tabbed { --pad-bottom: calc(var(--safe-bottom) + 5.5rem); }
+.app--tabbed { --pad-bottom: calc(var(--safe-bottom) + 6rem); }
 .app--acting { --pad-bottom: calc(var(--safe-bottom) + 6.75rem); }
 .app--tabbed.app--acting { --pad-bottom: calc(var(--safe-bottom) + 10rem); }
 
@@ -195,9 +212,10 @@ input::placeholder { color: var(--ink-3); }
   padding: var(--s6) 0 var(--s4);
 }
 .amount input {
+  font-family: 'Instrument Serif', Georgia, serif;
   width: auto; min-width: 2ch; max-width: 8ch; min-height: 0;
   padding: 0; border: 0; background: none; text-align: right;
-  font-size: 3.4rem; font-weight: 700; letter-spacing: -0.035em;
+  font-size: 3.8rem; font-weight: 400; letter-spacing: -0.012em;
   font-variant-numeric: tabular-nums;
 }
 .amount input:focus { outline: none; }
@@ -237,27 +255,53 @@ input::placeholder { color: var(--ink-3); }
 .actionbar__inner { max-width: 30rem; margin: 0 auto; }
 .actionbar--above-tabs { bottom: calc(var(--safe-bottom) + 3.9rem); padding-bottom: var(--s3); }
 
+/* A floating pill, not a bar.
+   An edge-to-edge strip of tiny stacked labels is the default web-app look and
+   reads as chrome. This sits inset above the home indicator and only the
+   active tab carries its label — the icon is enough for the other two, and the
+   expanding pill makes the current place unmistakable. */
 .tabbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
-  max-width: 30rem; margin: 0 auto;
-  padding: var(--s1) var(--s2) calc(var(--safe-bottom) + var(--s1));
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--line);
+  position: fixed; z-index: 30;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + var(--s3));
+  display: flex; align-items: center; gap: var(--s1);
+  padding: 6px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 28px -14px rgb(18 24 20 / 0.4), 0 2px 6px -2px rgb(18 24 20 / 0.12);
 }
 .tab {
   position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-height: var(--tap); padding: var(--s2) 0;
-  background: none; border: 0; cursor: pointer;
-  font-size: 0.68rem; font-weight: 650; color: var(--ink-3);
+  display: inline-flex; align-items: center; gap: var(--s2);
+  height: 44px; padding: 0 var(--s4);
+  border: 0; border-radius: var(--r-pill);
+  background: none; color: var(--ink-3); cursor: pointer;
+  font-size: 0.88rem; font-weight: 600; letter-spacing: -0.005em;
+  transition: background-color 0.22s ease, color 0.22s ease, padding 0.22s ease;
 }
-.tab svg { width: 22px; height: 22px; }
-.tab[aria-selected="true"] { color: var(--accent-ink); }
+.tab svg { width: 21px; height: 21px; flex: none; }
+.tab__label {
+  max-width: 0; overflow: hidden; white-space: nowrap;
+  opacity: 0; transition: max-width 0.24s ease, opacity 0.18s ease;
+}
+.tab[aria-selected="true"] {
+  background: var(--ink); color: var(--paper);
+}
+.tab[aria-selected="true"] .tab__label { max-width: 6rem; opacity: 1; }
+.tab:active { transform: scale(0.97); }
+
 .tab__badge {
-  position: absolute; top: 6px; left: 50%; margin-left: 8px;
-  width: 7px; height: 7px; border-radius: 50%; background: var(--warn);
+  position: absolute; top: 8px; right: 9px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.tab[aria-selected="true"] .tab__badge { box-shadow: 0 0 0 2px var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab, .tab__label { transition: none; }
 }
 
 /* ------------------------------------------------------------ bottom sheet */
@@ -367,11 +411,18 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
   text-transform: uppercase; color: rgb(244 246 244 / 0.52);
 }
 .panel__figure {
+  /* A high-contrast serif on the balance. Nobody does this in fintech, which
+     is exactly why it reads as considered rather than templated — and
+     Instrument Serif's figures are the best thing about it. */
+  font-family: 'Instrument Serif', Georgia, serif;
   margin-top: var(--s3);
-  font-size: 2.9rem; font-weight: 700; letter-spacing: -0.038em; line-height: 1;
+  font-size: 3.4rem; font-weight: 400; letter-spacing: -0.02em; line-height: 0.95;
   font-variant-numeric: tabular-nums;
 }
-.panel__figure span { font-size: 1rem; font-weight: 650; color: rgb(244 246 244 / 0.55); margin-left: var(--s2); }
+.panel__figure span {
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 0.95rem; font-weight: 650; color: rgb(244 246 244 / 0.55); margin-left: var(--s2);
+}
 .panel__foot {
   display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4);
   margin-top: var(--s5); padding-top: var(--s4);
@@ -546,7 +597,7 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
     justify-content: center;
   }
   .stage__aside { display: block; color: var(--ink-2); }
-  .stage__brand { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+  .stage__brand { font-family: 'Instrument Serif', Georgia, serif; font-size: 1.9rem; font-weight: 400; letter-spacing: -0.01em; color: var(--ink); }
   .stage__brand i { color: var(--accent); font-style: normal; }
   .stage__line { margin-top: var(--s2); font-size: 1.05rem; line-height: 1.45; color: var(--ink); }
   .stage__hint { margin-top: var(--s4); font-size: 0.9rem; line-height: 1.5; }
@@ -638,11 +689,12 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
   text-transform: uppercase; color: rgb(244 246 244 / 0.5);
 }
 .preview__figure {
+  font-family: 'Instrument Serif', Georgia, serif;
   margin-top: var(--s2);
-  font-size: 2rem; font-weight: 700; letter-spacing: -0.035em;
+  font-size: 2.2rem; font-weight: 400; letter-spacing: -0.01em; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-.preview__figure span { font-size: 0.8rem; font-weight: 650; color: rgb(244 246 244 / 0.5); margin-left: 6px; }
+.preview__figure span { font-family: 'Instrument Sans', sans-serif; font-size: 0.78rem; font-weight: 650; color: rgb(244 246 244 / 0.5); margin-left: 6px; }
 .preview__bar {
   margin-top: var(--s4); height: 5px; border-radius: 3px;
   background: rgb(244 246 244 / 0.14); overflow: hidden;
@@ -650,7 +702,8 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 .preview__bar i { display: block; width: 62%; height: 100%; border-radius: 3px; background: var(--accent); }
 
 .splash__word {
-  font-size: 2rem; font-weight: 700; letter-spacing: -0.032em; line-height: 1.12;
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 2.5rem; font-weight: 400; letter-spacing: -0.014em; line-height: 1.08;
   text-wrap: balance;
 }
 .splash__line {
