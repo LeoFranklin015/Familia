@@ -19,14 +19,14 @@ export function Device({ children }: { children: ReactNode }) {
         <div className="device__screen">{children}</div>
       </div>
 
-      {/* Desktop-only aside: whoever opens this on a laptop should know the
-          real thing is a phone, and how to get there. */}
+      {/* Desktop-only aside. It says what the app is and why it is boxed into
+          a handset, and nothing else: an address to retype is not something a
+          person needs on the screen they are already looking at. */}
       <aside className="stage__aside">
         <div className="stage__mark"><Mark size={40} /></div>
         <p className="stage__brand">Familia</p>
-        <p className="stage__line">Pocket money with limits the network enforces.</p>
-        <p className="stage__hint">Built for a phone. Open this address on yours to use Face ID.</p>
-        <p className="stage__url num">{location.host}</p>
+        <p className="stage__line">One wallet the whole house runs on.</p>
+        <p className="stage__hint">Built for a thumb, so it is shown at that size.</p>
       </aside>
     </div>
   )

@@ -164,6 +164,16 @@ a:hover { color: #fff; }
   text-transform: uppercase;
   color: var(--mid);
 }
+/* The wordmark, on the one screen that is an introduction. Everywhere else
+   the name is a kicker, because by then the person knows where they are. */
+.brand { display: flex; align-items: center; gap: 9px; color: var(--accent); }
+.brand__name {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
 .kicker--muted { color: var(--muted); }
 .kicker--accent { color: var(--accent); }
 .kicker--faint { color: var(--faint); letter-spacing: 0.08em; }
@@ -1268,7 +1278,6 @@ a:hover { color: #fff; }
   .stage__brand { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.03em; }
   .stage__line { margin: 10px 0 0; font-size: 15px; color: var(--muted); text-wrap: pretty; }
   .stage__hint { margin: 18px 0 0; font-size: 13px; color: var(--faint); text-wrap: pretty; }
-  .stage__url { margin: 6px 0 0; font-size: 12.5px; color: var(--accent); }
 }
 
 /* ── subscriptions ─────────────────────────────────────────────────────────

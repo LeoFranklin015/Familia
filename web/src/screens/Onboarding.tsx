@@ -3,7 +3,7 @@ import { api } from '../api'
 import { knownCredentialId, rememberCredentialId } from '../auth'
 import { createPasskey, unlockPasskey } from '../webauthn'
 import { KeyChoice } from '../components/KeyChoice'
-import { Icon } from '../components/ui'
+import { Icon, Mark } from '../components/ui'
 import family from '../assets/family.svg'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
@@ -95,7 +95,10 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
     return (
       <div className="screen screen--welcome">
         <div className="screen__pad">
-          <div className="kicker">Familia</div>
+          <div className="brand">
+            <Mark size={27} />
+            <span className="brand__name">Familia</span>
+          </div>
 
           {/* The household at the middle, the money going round it. Three
               orbits at different radii and periods, so the coins never settle
