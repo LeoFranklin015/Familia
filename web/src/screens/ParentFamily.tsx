@@ -6,7 +6,7 @@ import { resetDay } from './Activity'
 import type { Act } from './Parent'
 
 type Member = ParentState['members'][number]
-type Which = 'invite' | 'person' | 'limits' | 'allow' | null
+type Which = 'invite' | 'person' | 'limits' | 'places' | 'book' | null
 
 export function FamilyTab({
   st, act, onCopied, reload,
@@ -68,8 +68,8 @@ export function FamilyTab({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
           <button className="btn tap" onClick={() => setSheet('invite')}>Invite someone</button>
-          <button className="btn btn--quiet tap" onClick={() => setSheet('allow')}>
-            Who the family can pay
+          <button className="btn btn--quiet tap" onClick={() => setSheet('book')}>
+            Address book
           </button>
         </div>
       </div></div>
@@ -106,6 +106,12 @@ export function FamilyTab({
                     tone={person.revoked ? 'accent' : undefined}
                   />
                   <Row label="Starts again" value={resetDay(person.resetsAt)} />
+                  <Row
+                    label="Can pay"
+                    value={person.allowOnly
+                      ? `${person.allowed.length} ${person.allowed.length === 1 ? 'place' : 'places'}`
+                      : 'Anywhere'}
+                  />
                 </dl>
 
                 {/* The on-chain id, folded away. It is the proof the limits are
@@ -140,6 +146,11 @@ export function FamilyTab({
               <button className="btn tap" onClick={() => setSheet('limits')}>
                 {person.caps ? (person.revoked ? 'Turn spending back on' : 'Change limits') : 'Set limits'}
               </button>
+              {person.caps && !person.revoked && (
+                <button className="btn btn--quiet tap" onClick={() => setSheet('places')}>
+                  Where {person.name} can pay
+                </button>
+              )}
               {person.caps && !person.revoked && (
                 <button
                   className="btn btn--accent tap"
@@ -182,11 +193,34 @@ export function FamilyTab({
         />
       )}
 
-      <AllowSheet
-        open={sheet === 'allow'}
+      {person && (
+        <PlacesSheet
+          // Seeded from this person's saved list, so switching people does not
+          // carry the last one's choices over.
+          key={`${person.id}:${person.allowOnly}:${person.allowed.join(',')}`}
+          open={sheet === 'places'}
+          member={person}
+          recipients={st.recipients}
+          onBack={() => setSheet('person')}
+          onSave={(only, allowed) => {
+            setSheet(null)
+            act({
+              title: only
+                ? `Let ${person.name} pay ${allowed.length} ${allowed.length === 1 ? 'place' : 'places'}`
+                : `Let ${person.name} pay anyone`,
+              steps: ['Write the list on-chain'],
+              quote: { action: 'allowlist', memberId: person.id, only, allowed },
+              call: (auth) => api.post(`/api/members/${person.id}/allowlist`, { only, allowed, auth }),
+            })
+          }}
+        />
+      )}
+
+      <BookSheet
+        open={sheet === 'book'}
         st={st}
-        act={act}
         onClose={() => setSheet(null)}
+        act={act}
         reload={reload}
       />
     </>
@@ -196,7 +230,10 @@ export function FamilyTab({
 function status(m: Member, symbol: string): string {
   if (m.revoked) return 'Turned off'
   if (!m.caps) return 'No limits yet'
-  return `${two(m.spendable)} ${symbol} left this week`
+  const left = `${two(m.spendable)} ${symbol} left this week`
+  return m.allowOnly
+    ? `${left} · ${m.allowed.length} ${m.allowed.length === 1 ? 'place' : 'places'}`
+    : left
 }
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: 'accent' }) {
@@ -380,23 +417,22 @@ function InviteSheet({
   )
 }
 
-/* ── who the family can pay ──────────────────────────────────────────────── */
+/* ── the address book ────────────────────────────────────────────────────── */
 
 /**
- * The recipient book, and the switch that turns it into a rule.
+ * Names against addresses, shared by the household.
  *
- * Editing the list is free and instant while it is only a convenience. The
- * moment "only this list" is on, the same edits are real on-chain writes
- * across every active scope — so the sheet says which mode it is in, and the
- * cost follows from that rather than from which button was pressed.
+ * Editing this permits nothing on its own, so it is free and instant. An
+ * address only becomes payable when someone's own list includes it, which is
+ * the sheet below.
  */
-function AllowSheet({
-  open, st, act, onClose, reload,
+function BookSheet({
+  open, st, onClose, act, reload,
 }: {
   open: boolean
   st: ParentState
-  act: Act
   onClose: () => void
+  act: Act
   reload: () => Promise<void>
 }) {
   const [name, setName] = useState('')
@@ -404,16 +440,10 @@ function AllowSheet({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  // Whether a change reaches the chain at all: only if the book is a rule and
-  // there is at least one live permission for it to bind.
-  const live = st.members.some((m) => m.scopeId && !m.revoked)
-  const enforcedEdit = st.allowOnly && live
-
-  /** A book edit that costs nothing — no key, no operation, no waiting. */
-  const localEdit = async (path: string, body: Record<string, unknown>) => {
+  const add = async () => {
     setErr(''); setBusy(true)
     try {
-      await api.post(path, body)
+      await api.post('/api/recipients', { name, address, kind: 'PERSON' })
       await reload()
       setName(''); setAddress('')
     } catch (e) {
@@ -421,106 +451,59 @@ function AllowSheet({
     } finally { setBusy(false) }
   }
 
-  /** The same edit, when it has to be written on-chain first. */
-  const signedEdit = (title: string, steps: string[], path: string, body: Record<string, unknown>) => {
-    onClose()
-    act({
-      title, steps,
-      quote: { action: 'allowlist', only: st.allowOnly },
-      call: async (auth) => {
-        const r = await api.post<{ txHash?: string; feeCharged?: string | null }>(path, { ...body, auth })
-        return r
-      },
-    })
-  }
-
-  const add = () => {
-    const body = { name, address, kind: 'PERSON' as const }
-    if (enforcedEdit) {
-      signedEdit(`Let the family pay ${name}`, ['Write the list on-chain'], '/api/recipients', body)
-    } else {
-      void localEdit('/api/recipients', body)
-    }
-  }
+  /** Who currently has this address on their list. */
+  const heldBy = (addr: string) => st.members.filter(
+    (m) => m.allowOnly && m.allowed.some((a) => a.toLowerCase() === addr.toLowerCase()),
+  )
 
   const remove = (r: Recipient) => {
-    if (enforcedEdit) {
-      signedEdit(`Stop the family paying ${r.name}`, ['Write the list on-chain'], `/api/recipients/${r.id}/remove`, {})
-    } else {
-      void localEdit(`/api/recipients/${r.id}/remove`, {})
+    const holders = heldBy(r.address)
+    if (holders.length === 0) {
+      void (async () => {
+        setBusy(true)
+        try { await api.post(`/api/recipients/${r.id}/remove`, {}); await reload() }
+        finally { setBusy(false) }
+      })()
+      return
     }
-  }
-
-  const toggle = () => {
-    const only = !st.allowOnly
-    if (!live) { void localEdit('/api/allowlist', { only }); return }
     onClose()
     act({
-      title: only ? 'Only pay this list' : 'Let the family pay anyone',
-      steps: ['Write the list on-chain'],
-      quote: { action: 'allowlist', only },
-      call: (auth) => api.post('/api/allowlist', { only, auth }),
+      title: `Remove ${r.name}`,
+      steps: [`Take it off ${holders.length} ${holders.length === 1 ? 'list' : 'lists'} on-chain`],
+      call: (auth) => api.post(`/api/recipients/${r.id}/remove`, { auth }),
     })
   }
 
   return (
-    <Sheet open={open} title="Who the family can pay" onClose={onClose}>
-      <button
-        className="tap"
-        onClick={toggle}
-        aria-pressed={st.allowOnly}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-          minHeight: 58, padding: '0 16px', borderRadius: 'var(--r2)',
-          border: `1px solid ${st.allowOnly ? 'var(--accent)' : 'var(--line)'}`,
-          background: st.allowOnly ? 'rgb(95 211 163 / 0.09)' : 'transparent',
-          textAlign: 'left', marginBottom: 14,
-        }}
-      >
-        <span
-          style={{
-            width: 22, height: 22, flex: 'none', borderRadius: 7,
-            border: `1.5px solid ${st.allowOnly ? 'var(--accent)' : 'var(--line)'}`,
-            background: st.allowOnly ? 'var(--accent)' : 'transparent',
-            display: 'grid', placeItems: 'center', color: 'var(--ink)',
-          }}
-        >
-          {st.allowOnly && <Icon name="check" size={13} />}
-        </span>
-        <span style={{ flex: 1 }}>
-          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>Only this list</span>
-          <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)' }}>
-            {st.allowOnly
-              ? 'Payments to anyone else are refused on-chain'
-              : 'Anyone with an address can be paid'}
-          </span>
-        </span>
-      </button>
+    <Sheet open={open} title="Address book" onClose={onClose}>
+      <p className="hint" style={{ marginBottom: 14 }}>
+        Names for addresses, so nobody types hex twice. Saving one here lets
+        nobody pay it — that is set per person, under their name.
+      </p>
 
-      {st.recipients.map((r) => (
-        <div
-          key={r.id}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: '1px solid var(--line)' }}
-        >
-          <span className="avatar avatar--sm" style={{ background: 'var(--fill-2)', color: 'var(--muted)', borderColor: 'transparent' }}>
-            <KindIcon kind={r.kind} size={16} />
-          </span>
-          <span className="row__body">
-            <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>{r.name}</span>
-            <span className="num" style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
-              {shortAddress(r.address)}
-            </span>
-          </span>
-          <button
-            className="link tap"
-            style={{ fontSize: 12.5 }}
-            disabled={busy}
-            onClick={() => remove(r)}
+      {st.recipients.map((r) => {
+        const holders = heldBy(r.address)
+        return (
+          <div
+            key={r.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderTop: '1px solid var(--line)' }}
           >
-            Remove
-          </button>
-        </div>
-      ))}
+            <span className="avatar avatar--sm" style={{ background: 'var(--fill-2)', color: 'var(--muted)', borderColor: 'transparent' }}>
+              <KindIcon kind={r.kind} size={16} />
+            </span>
+            <span className="row__body">
+              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>{r.name}</span>
+              <span className="num" style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                {shortAddress(r.address)}
+                {holders.length > 0 && ` · ${holders.map((m) => m.name).join(', ')}`}
+              </span>
+            </span>
+            <button className="link tap" style={{ fontSize: 12.5 }} disabled={busy} onClick={() => remove(r)}>
+              Remove
+            </button>
+          </div>
+        )
+      })}
 
       <div style={{ marginTop: 18 }}>
         <label className="field">
@@ -539,8 +522,7 @@ function AllowSheet({
         <div className="callout mt3">
           <Icon name="warning" size={18} />
           <p className="note" style={{ color: 'var(--warn)' }}>
-            Check a pasted address twice. Anything on this list can be paid, and
-            a payment can&rsquo;t be called back.
+            Check a pasted address twice. A payment cannot be called back.
           </p>
         </div>
 
@@ -551,14 +533,129 @@ function AllowSheet({
           disabled={busy || !name.trim() || !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
           onClick={add}
         >
-          {busy ? <><span className="spin" />Adding…</> : 'Add to the list'}
+          {busy ? <><span className="spin" />Adding…</> : 'Add to the book'}
         </button>
-        {enforcedEdit && (
-          <p className="note mt2" style={{ textAlign: 'center' }}>
-            The list is being enforced, so this goes on-chain.
-          </p>
-        )}
       </div>
+    </Sheet>
+  )
+}
+
+/* ── where one person can pay ────────────────────────────────────────────── */
+
+/**
+ * One member's allowlist.
+ *
+ * This is the shape the contract actually holds: `allowlist[scopeId][address]`,
+ * one list per scope, and a scope belongs to one person. So a nine-year-old
+ * can be held to the corner shop while a teenager is not — which a
+ * household-wide list could never express.
+ */
+function PlacesSheet({
+  open, member, recipients, onBack, onSave,
+}: {
+  open: boolean
+  member: Member
+  recipients: Recipient[]
+  onBack: () => void
+  onSave: (only: boolean, allowed: string[]) => void
+}) {
+  const [only, setOnly] = useState(member.allowOnly)
+  const [picked, setPicked] = useState<string[]>(member.allowed)
+
+  const has = (a: string) => picked.some((p) => p.toLowerCase() === a.toLowerCase())
+  const toggle = (a: string) =>
+    setPicked((p) => (has(a) ? p.filter((x) => x.toLowerCase() !== a.toLowerCase()) : [...p, a]))
+
+  const changed = only !== member.allowOnly
+    || picked.length !== member.allowed.length
+    || picked.some((p) => !member.allowed.some((a) => a.toLowerCase() === p.toLowerCase()))
+
+  return (
+    <Sheet open={open} title={`Where ${member.name} can pay`} onClose={onBack} back>
+      <button
+        className="tap"
+        onClick={() => setOnly((o) => !o)}
+        aria-pressed={only}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+          minHeight: 58, padding: '0 16px', borderRadius: 'var(--r2)',
+          border: `1px solid ${only ? 'var(--accent)' : 'var(--line)'}`,
+          background: only ? 'rgb(95 211 163 / 0.09)' : 'transparent',
+          textAlign: 'left', marginBottom: 14,
+        }}
+      >
+        <span
+          style={{
+            width: 22, height: 22, flex: 'none', borderRadius: 7,
+            border: `1.5px solid ${only ? 'var(--accent)' : 'var(--line)'}`,
+            background: only ? 'var(--accent)' : 'transparent',
+            display: 'grid', placeItems: 'center', color: 'var(--ink)',
+          }}
+        >
+          {only && <Icon name="check" size={13} />}
+        </span>
+        <span style={{ flex: 1 }}>
+          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>Only these places</span>
+          <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)' }}>
+            {only
+              ? 'Anywhere else is refused on-chain'
+              : `${member.name} can pay any address`}
+          </span>
+        </span>
+      </button>
+
+      {only && (
+        recipients.length > 0 ? (
+          recipients.map((r) => (
+            <button
+              key={r.id}
+              className="tap"
+              onClick={() => toggle(r.address)}
+              aria-pressed={has(r.address)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                padding: '11px 0', borderTop: '1px solid var(--line)',
+                background: 'none', border: 0, borderTopStyle: 'solid', textAlign: 'left',
+              }}
+            >
+              <span
+                style={{
+                  width: 22, height: 22, flex: 'none', borderRadius: 7,
+                  border: `1.5px solid ${has(r.address) ? 'var(--accent)' : 'var(--line)'}`,
+                  background: has(r.address) ? 'var(--accent)' : 'transparent',
+                  display: 'grid', placeItems: 'center', color: 'var(--ink)',
+                }}
+              >
+                {has(r.address) && <Icon name="check" size={13} />}
+              </span>
+              <span className="avatar avatar--sm" style={{ background: 'var(--fill-2)', color: 'var(--muted)', borderColor: 'transparent' }}>
+                <KindIcon kind={r.kind} size={16} />
+              </span>
+              <span className="row__body">
+                <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600 }}>{r.name}</span>
+                <span className="num" style={{ display: 'block', fontSize: 11, color: 'var(--faint)' }}>
+                  {shortAddress(r.address)}
+                </span>
+              </span>
+            </button>
+          ))
+        ) : (
+          <p className="empty">Nothing in the address book yet. Add somewhere first.</p>
+        )
+      )}
+
+      <p className="hint mt3">
+        The contract holds this list, not the app. A payment anywhere else is
+        refused on-chain, whatever this screen says.
+      </p>
+
+      <button
+        className="btn tap mt4"
+        disabled={!changed || (only && picked.length === 0)}
+        onClick={() => onSave(only, picked)}
+      >
+        {only && picked.length === 0 ? 'Pick at least one place' : 'Save'}
+      </button>
     </Sheet>
   )
 }

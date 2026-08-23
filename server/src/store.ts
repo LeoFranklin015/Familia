@@ -44,6 +44,21 @@ export type Member = {
   grantTx?: string
   revoked?: boolean
   joinedAt: number
+  /**
+   * Where this person may pay.
+   *
+   * Per person, because that is how the contract stores it —
+   * `allowlist[scopeId][address]`, one list per scope, and a scope belongs to
+   * one member. A household-wide list threw that granularity away: the point
+   * is that a nine-year-old can be held to the corner shop while a teenager
+   * is not.
+   *
+   * `allowOnly` off means the contract accepts any recipient from them, which
+   * is what an empty on-chain allowlist already means.
+   */
+  allowOnly?: boolean
+  /** Addresses they may pay, when `allowOnly` is on. */
+  allowed?: string[]
 }
 
 export type SpendRequest = {
@@ -93,10 +108,15 @@ export type Family = {
   requests: SpendRequest[]
   deposits: Array<{ amount: string; txHash: string; at: number }>
   activity: Activity[]
-  /** Who the household can pay. */
+  /**
+   * The household's address book: names against addresses, shared so nobody
+   * types the same hex twice. Purely a convenience — it reaches the chain only
+   * through a *person's* allowlist, never on its own.
+   */
   recipients: Recipient[]
-  /** Whether the book is enforced on-chain, or merely a convenience. */
-  allowOnly: boolean
+  /** @deprecated Household-wide enforcement, replaced by the per-member list.
+   *  Read once at migration and then left alone. */
+  allowOnly?: boolean
 }
 
 /** Identity for twelve hours. Grants no ability to sign anything. */
@@ -128,7 +148,17 @@ export function normalize(f: Family): Family {
   f.deposits ??= []
   f.activity ??= []
   f.recipients ??= STARTER_RECIPIENTS.map((r) => ({ ...r }))
-  f.allowOnly ??= false
+
+  // Households written while the list was household-wide: give every member
+  // the list the household had, which is what they were actually being held
+  // to. Done on read so no separate migration has to run.
+  for (const m of f.members) {
+    if (m.allowOnly === undefined) {
+      m.allowOnly = Boolean(f.allowOnly)
+      m.allowed = f.allowOnly ? f.recipients.map((r) => r.address) : []
+    }
+    m.allowed ??= []
+  }
   return f
 }
 

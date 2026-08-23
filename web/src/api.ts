@@ -93,6 +93,11 @@ export type ParentState = {
     spendable: string
     spentThisPeriod: string
     resetsAt: number
+    /** Whether this person is held to a list of places. Per person, because
+     *  that is how the contract stores it. */
+    allowOnly: boolean
+    /** The addresses they may pay, when `allowOnly` is on. */
+    allowed: string[]
   }>
   pendingRequests: Array<{
     requestId: string
@@ -101,9 +106,9 @@ export type ParentState = {
     amount: string
     createdAt: number
   }>
+  /** The household address book. Names against addresses, and nothing more:
+   *  an entry permits nothing until it is on someone's list. */
   recipients: Recipient[]
-  /** Whether the book is enforced on-chain, or only a convenience. */
-  allowOnly: boolean
 }
 
 export type FeeQuote = {
@@ -139,8 +144,11 @@ export type MemberState = {
   headroom: string
   spentThisPeriod: string
   resetsAt: number
+  /** The whole book, so an address in their history resolves to a name. */
   recipients: Recipient[]
+  /** Their own restriction, and the places it permits. */
   allowOnly: boolean
+  allowed: string[]
   myRequests: Array<{ requestId: string; toName: string; amount: string; status: string; createdAt: number }>
   activity: Activity[]
 }

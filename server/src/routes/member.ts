@@ -71,10 +71,11 @@ memberRoutes.get('/api/me', async (c) => {
     headroom: spendable,
     spentThisPeriod: spent,
     resetsAt,
-    // The book, so a member can pick a name instead of typing hex — and, when
-    // it is enforced, so they can be told which addresses will actually work.
+    // The whole book, so any address in their history resolves to a name.
     recipients: family.recipients,
-    allowOnly: family.allowOnly,
+    // Their own list, which is the one the contract will hold them to.
+    allowOnly: Boolean(member.allowOnly),
+    allowed: member.allowed ?? [],
     myRequests: family.requests.filter((r) => r.memberId === member.id),
     activity: family.activity.filter(
       (a) => a.memberId === member.id && ['payment', 'ask', 'approved', 'denied'].includes(a.kind),
