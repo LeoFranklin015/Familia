@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { createPasskey, webauthnAvailable } from '../webauthn'
+import { Mark } from '../components/ui'
 
 type Invite = { familyName: string; inviteeName: string; isParent: boolean }
 
@@ -58,12 +59,12 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
   return (
     <div className="app">
       <header className="topbar"><span className="brand">kin<i>.</i></span></header>
-      <h1>Hi {invite.inviteeName}.</h1>
-      <p className="lede">
+      <div className="splash__mark mt4"><Mark size={44} /></div>
+      <h1 className="mt4">Hi {invite.inviteeName}.</h1>
+      <p className="lede mt2">
         {invite.isParent
           ? <>Finish setting up <b>{invite.familyName}</b>.</>
-          : <><b>{invite.familyName}</b> added you. One tap and you can start paying —
-             nothing to install, nothing to top up.</>}
+          : <><b>{invite.familyName}</b> added you.</>}
       </p>
 
       {!usePassphrase ? (

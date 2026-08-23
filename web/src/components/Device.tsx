@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Mark } from './ui'
 
 /**
  * On a phone this is a passthrough. On a desktop it puts the app inside a
@@ -21,11 +22,10 @@ export function Device({ children }: { children: ReactNode }) {
       {/* Desktop-only aside: whoever opens this on a laptop should know the
           real thing is a phone, and how to get there. */}
       <aside className="stage__aside">
-        <p className="stage__brand">kin<i>.</i></p>
+        <div className="stage__mark"><Mark size={40} /></div>
+        <p className="stage__brand">kin</p>
         <p className="stage__line">Pocket money with limits the network enforces.</p>
-        <p className="stage__hint">
-          Built for a phone — open this address on yours to use Face ID.
-        </p>
+        <p className="stage__hint">Built for a phone — open this address on yours to use Face ID.</p>
         <p className="stage__url mono">{location.host}</p>
       </aside>
     </div>

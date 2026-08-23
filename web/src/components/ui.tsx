@@ -51,9 +51,21 @@ const base = {
   strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
 }
 
+/** The mark: a bounded shape with the money inside it. Household money,
+ *  shared and bounded — drawn rather than lettered, so it survives being
+ *  small and doesn't read as a wordmark trope. */
+export function Mark({ size = 44 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="38" height="38" rx="13" stroke="currentColor" strokeWidth="2.4" opacity="0.28" />
+      <circle cx="22" cy="22" r="8.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 export const Icon = {
-  pot: () => (
-    <svg {...base} aria-hidden="true"><path d="M4 9h16l-1.2 9.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8Z" /><path d="M8 9V6.5A3.5 3.5 0 0 1 11.5 3h1A3.5 3.5 0 0 1 16 6.5V9" /></svg>
+  home: () => (
+    <svg {...base} aria-hidden="true"><path d="M4 10.6 12 4l8 6.6" /><path d="M6 9.8V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9.8" /></svg>
   ),
   family: () => (
     <svg {...base} aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><path d="M16 5.2a3.2 3.2 0 0 1 0 6.1" /><path d="M17.5 14.4A5.5 5.5 0 0 1 20.5 20" /></svg>

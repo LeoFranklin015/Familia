@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
+import { Mark } from '../components/ui'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
@@ -86,27 +87,22 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   }
 
   return (
-    <div className="app">
-      <header className="topbar"><span className="brand">kin<i>.</i></span></header>
+    <div className={step === 'welcome' ? 'app app--splash' : 'app'}>
+      {step !== 'welcome' && <header className="topbar"><span className="brand">kin<i>.</i></span></header>}
 
       {step === 'welcome' && (
-        <>
-          <h1>Pocket money that can't go wrong.</h1>
-          <p className="lede">
-            One pot the family shares. You decide what each person can spend, and the
-            limits hold on their own — no card to cancel, no app for them to install.
-          </p>
-          <ol className="steps">
-            <li><b>Put money in the pot.</b> It stays in your own account.</li>
-            <li><b>Send a link.</b> One tap and they're ready.</li>
-            <li><b>They just pay.</b> Within your limits it goes straight through.</li>
-          </ol>
-          <button className="btn btn--primary btn--block" onClick={() => go('names')}>Start a family</button>
-          <p className="center-row">
-            Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
-          </p>
-          <p className="center-row center-row--dim">Been sent an invite? Just open that link.</p>
-        </>
+        <div className="splash">
+          <div className="splash__mark"><Mark size={52} /></div>
+          <h1 className="splash__word">kin</h1>
+          <p className="splash__line">Pocket money that can't go wrong.</p>
+
+          <div className="splash__foot">
+            <button className="btn btn--primary btn--block" onClick={() => go('names')}>Get started</button>
+            <p className="center-row">
+              Already set up? <button className="link" onClick={() => go('signin')}>Sign in</button>
+            </p>
+          </div>
+        </div>
       )}
 
       {step === 'names' && (
@@ -133,7 +129,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
           <h1>Lock it to you, {parentName}.</h1>
           <p className="lede">
             Your face is the key. Nothing to write down, nothing to lose — and only this
-            device can open the pot.
+            device can open it.
           </p>
           {!usePassphrase ? (
             <>

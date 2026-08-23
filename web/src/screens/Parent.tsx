@@ -6,15 +6,15 @@ import { Sheet } from '../components/Sheet'
 import { Progress, type Job } from '../components/Progress'
 import { Empty, Icon, ScreenSkeleton } from '../components/ui'
 
-type Tab = 'pot' | 'family' | 'activity'
+type Tab = 'home' | 'family' | 'activity'
 type Member = ParentState['members'][number]
 
 /** Explanations live here, behind an (i), so no screen carries a paragraph. */
 const NOTES = {
-  pot: {
+  balance: {
     title: 'Where the money sits',
     body: [
-      'The pot is supplied to Aave and held as aUSD₮ in your own account. Nobody takes custody of it — not us, not the app.',
+      'The balance is supplied to Aave and held as aUSD₮ in your own account. Nobody takes custody of it — not us, not the app.',
       'When someone spends, their allowance redeems from that position and pays the shop in the same transaction.',
     ],
   },
@@ -36,7 +36,7 @@ const NOTES = {
 
 export default function Parent({ onLogout }: { onLogout: () => void }) {
   const [st, setSt] = useState<ParentState | null>(null)
-  const [tab, setTab] = useState<Tab>('pot')
+  const [tab, setTab] = useState<Tab>('home')
   const [job, setJob] = useState<Job | null>(null)
   const [note, setNote] = useState<keyof typeof NOTES | null>(null)
   const [pending, setPending] = useState<{ run: (a: Approval) => void } | null>(null)
@@ -96,7 +96,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     <div className="app app--tabbed">
       <TopBar who={st.familyName} onLogout={onLogout} />
 
-      {tab === 'pot' && <Pot st={st} act={act} onInfo={setNote} />}
+      {tab === 'home' && <Home st={st} act={act} onInfo={setNote} />}
       {tab === 'family' && <Family st={st} act={act} onInfo={setNote} />}
       {tab === 'activity' && <Activity st={st} />}
 
@@ -124,7 +124,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       </Sheet>
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
-        {([['pot', 'Pot', <Icon.pot key="p" />], ['family', 'Family', <Icon.family key="f" />], ['activity', 'Activity', <Icon.activity key="a" />]] as const)
+        {([['home', 'Home', <Icon.home key="p" />], ['family', 'Family', <Icon.family key="f" />], ['activity', 'Activity', <Icon.activity key="a" />]] as const)
           .map(([id, label, icon]) => (
             <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id as Tab)}>
               {icon}{label}
@@ -170,7 +170,7 @@ function Fee({ quote, symbol }: { quote: FeeQuote | null; symbol: string }) {
   )
 }
 
-function Pot({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }) {
+function Home({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }) {
   const [adding, setAdding] = useState(false)
   const [amount, setAmount] = useState('')
   const quote = useFeeQuote(adding && Number(amount) > 0 ? { action: 'deposit', amount } : null)
@@ -178,15 +178,15 @@ function Pot({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo })
 
   return (
     <>
-      <section className="panel" aria-label="The family pot">
+      <section className="panel" aria-label="Family balance">
         <div className="panel__label">
-          The pot
-          <button className="info" onClick={() => onInfo('pot')} aria-label="Where the money sits">i</button>
+          Family balance
+          <button className="info" onClick={() => onInfo('balance')} aria-label="Where the money sits">i</button>
         </div>
         <div className="panel__figure num">{st.wallet.pot}<span>{st.symbol}</span></div>
         <div className="panel__foot">
-          <div className="panel__stat"><b className="num">{st.wallet.loose}</b><span>To hand</span></div>
-          <div className="panel__stat"><b className="num">{committed}</b><span>Committed weekly</span></div>
+          <div className="panel__stat"><b className="num">{st.wallet.loose}</b><span>Available</span></div>
+          <div className="panel__stat"><b className="num">{committed}</b><span>Allowances</span></div>
         </div>
       </section>
 
@@ -220,7 +220,7 @@ function Pot({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo })
           onClick={() => {
             const value = amount
             setAdding(false)
-            act('Adding to the pot', (auth) => post('/api/deposit', { amount: value }, auth), `${value} ${st.symbol} is in the pot.`)
+            act('Adding to the balance', (auth) => post('/api/deposit', { amount: value }, auth), `${value} ${st.symbol} is in the balance.`)
           }}>
           Add {amount || ''} {st.symbol}
         </button>

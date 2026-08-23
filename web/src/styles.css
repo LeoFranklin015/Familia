@@ -571,3 +571,25 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 .job .hint { margin-top: var(--s2); }
 .job .dl, .job .btn { text-align: left; }
 .job .btn { text-align: center; }
+
+/* — splash —
+   The first screen is an arrival, not an explanation: the mark, the name, one
+   line, and the way in sitting where a thumb already is. Anything that
+   describes the product belongs after someone has decided to look. */
+.app--splash { display: flex; flex-direction: column; min-height: 100dvh; }
+.splash {
+  flex: 1; display: flex; flex-direction: column;
+  padding-top: 18dvh;
+}
+.splash__mark { color: var(--accent); }
+.splash__word {
+  margin-top: var(--s5);
+  font-size: 2.9rem; font-weight: 700; letter-spacing: -0.045em; line-height: 1;
+}
+.splash__line {
+  margin-top: var(--s3);
+  font-size: 1.12rem; line-height: 1.4; color: var(--ink-2);
+  max-width: 17ch; text-wrap: balance;
+}
+.splash__foot { margin-top: auto; padding-bottom: var(--s4); }
+.stage__mark { color: var(--accent); margin-bottom: var(--s3); }
