@@ -728,6 +728,7 @@ a:hover { color: #fff; }
   bottom: calc(26px + var(--safe-bottom));
   display: flex;
   padding: 5px;
+  justify-content: center;
   border-radius: 999px;
   background: rgb(10 26 20 / 0.82);
   border: 1px solid var(--line);
@@ -736,20 +737,48 @@ a:hover { color: #fff; }
   z-index: 30;
 }
 .tab {
-  flex: 1;
+  /* Equal quarters don't work: "Activity" needs ~98px and a quarter of the
+     bar is ~90px, so the longest label was the one that clipped. Instead the
+     labelled tab takes exactly the width it needs and the icon-only ones
+     share what is left — which is also what the design meant by labelling
+     only the current tab. */
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 46px;
+  padding: 0 6px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
+  transition: background 0.16s ease, color 0.16s ease;
 }
-.tab--on { background: var(--pale); color: var(--ink); }
+/* The label yields before the row does. */
+.tab > span:not(.tab__badge) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.tab:hover:not(.tab--on) { background: rgb(234 243 238 / 0.07); color: var(--text); }
+.tab--on {
+  background: var(--pale);
+  color: var(--ink);
+  /* Its own content width, so the label is never the thing that gives way. */
+  flex: 0 0 auto;
+  padding: 0 16px;
+}
+/* No scale here: shrinking a pill inside a pill uncovers the bar behind it,
+   which reads as the button coming loose. Press is a tint instead. */
+.tab.tap:active { transform: none; }
+.tab:not(.tab--on):active { background: rgb(234 243 238 / 0.13); }
+.tab--on:active { background: #c4e6d5; }
 .tab__badge {
   min-width: 18px;
   height: 18px;
@@ -794,7 +823,16 @@ a:hover { color: #fff; }
   animation: fade 0.16s ease;
 }
 .veil--auth { z-index: 80; background: rgb(3 8 6 / 0.7); }
-.veil--op { z-index: 90; display: grid; place-items: center; padding: 20px; background: var(--scrim-deep); }
+.veil--op {
+  z-index: 90;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom));
+  background: var(--scrim-deep);
+}
+.veil--op .modal { max-height: 100%; overflow-y: auto; }
 .veil--over { z-index: 95; background: #040a07; justify-content: flex-start; }
 
 .sheet {

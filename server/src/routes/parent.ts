@@ -25,6 +25,20 @@ function parentOf(c: Context<any, any, any>) {
 }
 
 /**
+ * Why `parentOf` said no, in words that point somewhere.
+ *
+ * "parent only" is true and useless: the overwhelmingly common cause is a
+ * session that has ended, and being told the wrong role when the real problem
+ * is a stale cookie sends you looking in the wrong place. `sessionEnded` also
+ * lets the interface act — drop to sign-in rather than report a failure.
+ */
+function refuse(c: Context<any, any, any>) {
+  return currentSession(c)
+    ? c.json({ error: 'This account is not the one that set up the household.' }, 403)
+    : c.json({ error: 'Your session has ended — sign in again.', sessionEnded: true }, 401)
+}
+
+/**
  * Sum of the period caps of every active scope — the bounded allowance the
  * manager is trusted with. Never type(uint256).max.
  *
@@ -82,7 +96,7 @@ async function parentWrite(
   fn: (account: Parameters<Parameters<typeof actAs>[2]>[0], family: Family, address: string) => Promise<Response>,
 ): Promise<Response> {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   try {
     // The parent pays their own fees in USD₮ once they hold some; before that
     // there is nothing to pay with, so the first operation is sponsored.
@@ -230,7 +244,7 @@ parentRoutes.post('/api/pay', (c) =>
  *  instant; it only reaches the chain if the book is being enforced. */
 parentRoutes.post('/api/recipients', async (c) => {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   const { name, address, kind = 'PERSON' } =
     await bodyOf<{ name: string; address: string; kind?: 'SHOP' | 'PERSON' }>(c)
 
@@ -254,7 +268,7 @@ parentRoutes.post('/api/recipients', async (c) => {
 
 parentRoutes.post('/api/recipients/:id/remove', async (c) => {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   const gone = ctx.family.recipients.find((r) => r.id === c.req.param('id'))
   if (!gone) return c.json({ error: 'That one is not on the list.' }, 400)
 
@@ -275,7 +289,7 @@ parentRoutes.post('/api/recipients/:id/remove', async (c) => {
  */
 parentRoutes.post('/api/allowlist', async (c) => {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   const { only } = await bodyOf<{ only: boolean }>(c)
   const on = Boolean(only)
   const all = ctx.family.recipients.map((r) => r.address)
@@ -425,7 +439,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
  */
 parentRoutes.post('/api/quote', async (c) => {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   const { s, family } = ctx
 
   if (!(await canPayFeesInUsdt(s.address))) {
@@ -547,7 +561,7 @@ async function buildForAction(family: Family, address: string, body: Record<stri
 
 parentRoutes.get('/api/state', async (c) => {
   const ctx = parentOf(c)
-  if (!ctx) return c.json({ error: 'parent only' }, 403)
+  if (!ctx) return refuse(c)
   const { s, family } = ctx
 
   const [pool, loose, addable, paysInUsdt] = await Promise.all([

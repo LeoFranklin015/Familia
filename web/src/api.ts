@@ -1,10 +1,21 @@
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** The server no longer knows this session. Not a failure of the action —
+   *  the action never started, and no amount of retrying will help. */
+  sessionEnded: boolean
+  constructor(message: string, status: number, sessionEnded = false) {
     super(message)
     this.status = status
+    this.sessionEnded = sessionEnded
   }
 }
+
+/**
+ * Called when any request reports the session is gone, so the app can return
+ * to sign-in instead of showing a payment as refused.
+ */
+let onSessionEnd: (() => void) | null = null
+export function whenSessionEnds(fn: () => void) { onSessionEnd = fn }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -13,7 +24,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status)
+  if (!res.ok) {
+    const ended = Boolean(body.sessionEnded)
+    if (ended) onSessionEnd?.()
+    throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status, ended)
+  }
   return body as T
 }
 

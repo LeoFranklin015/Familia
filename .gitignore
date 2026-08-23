@@ -17,3 +17,15 @@ tasks/notes.md
 # runtime state
 server/data/
 web/dist/
+
+# briefs, working notes and pasted screenshots — kept on disk, out of history
+DEMO.md
+DESIGN.md
+SPEC.md
+claude.md
+hackathon.md
+wdk-skill.md
+tasks/
+*.png
+*.jpg
+*.jpeg

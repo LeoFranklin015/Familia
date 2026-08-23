@@ -24,6 +24,13 @@ function payeeName(family: Family, address: string): string {
     ?? `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
+/** Same as the parent side: a stale cookie is not a role error. */
+function refuse(c: Context<any, any, any>) {
+  return currentSession(c)
+    ? c.json({ error: 'This account cannot spend from that household.' }, 403)
+    : c.json({ error: 'Your session has ended — sign in again.', sessionEnded: true }, 401)
+}
+
 function memberOf(c: Context<any, any, any>) {
   const s = currentSession(c)
   if (s?.role !== 'member' || !s.memberId) return null
@@ -34,7 +41,7 @@ function memberOf(c: Context<any, any, any>) {
 
 memberRoutes.get('/api/me', async (c) => {
   const ctx = memberOf(c)
-  if (!ctx) return c.json({ error: 'member only' }, 403)
+  if (!ctx) return refuse(c)
   const { family, member } = ctx
 
   let spendable = '0', resetsAt = 0, spent = '0'
@@ -77,7 +84,7 @@ memberRoutes.get('/api/me', async (c) => {
 
 memberRoutes.post('/api/spend', async (c) => {
   const ctx = memberOf(c)
-  if (!ctx) return c.json({ error: 'member only' }, 403)
+  if (!ctx) return refuse(c)
   const { family, member } = ctx
   if (!member.scopeId) return c.json({ error: 'You have no spending allowance yet — ask a parent.' }, 409)
 
