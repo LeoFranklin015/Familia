@@ -25,7 +25,7 @@ export class AuthError extends Error {
 }
 
 /** The shape every write endpoint expects alongside its own fields. */
-export type AuthPayload = { auth?: KeySource & { credentialId?: string } }
+type AuthPayload = { auth?: KeySource & { credentialId?: string } }
 
 /**
  * Open the caller's vault with the key they just presented, run one operation

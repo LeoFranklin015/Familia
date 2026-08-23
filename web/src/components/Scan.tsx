@@ -24,7 +24,7 @@ export function scanningSupported(): boolean {
  * one, and its `address` parameter wins when present because in a transfer
  * request the recipient is the parameter, not the subject.
  */
-export function addressFromCode(text: string): string | null {
+function addressFromCode(text: string): string | null {
   const param = text.match(/[?&]address=(0x[0-9a-fA-F]{40})/)
   if (param) return param[1]
   const bare = text.match(/(0x[0-9a-fA-F]{40})/)

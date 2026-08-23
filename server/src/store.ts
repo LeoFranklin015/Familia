@@ -19,7 +19,7 @@ import { mongoBackend } from './store/mongo.js'
 export { Contended } from './store/backend.js'
 
 // ------------------------------------------------------------------- types
-export type Role = 'parent' | 'member'
+type Role = 'parent' | 'member'
 
 /** One account's key material, plus enough to know whose it is. */
 export type Vault = {
@@ -60,7 +60,7 @@ export type Member = {
   allowed?: string[]
 }
 
-export type SpendRequest = {
+type SpendRequest = {
   requestId: string
   memberId: string
   to: string
@@ -134,7 +134,7 @@ export type Session = {
 
 /** Shops every household starts with, so the first payment has somewhere to
  *  go. Deterministic, obviously-test addresses. */
-export const STARTER_RECIPIENTS: Recipient[] = [
+const STARTER_RECIPIENTS: Recipient[] = [
   { id: 'r-corner', name: 'Corner Store', address: '0x1111000000000000000000000000000000001111', kind: 'SHOP' },
   { id: 'r-books', name: 'Book Shop', address: '0x2222000000000000000000000000000000002222', kind: 'SHOP' },
   { id: 'r-games', name: 'Game Pass', address: '0x3333000000000000000000000000000000003333', kind: 'SHOP' },

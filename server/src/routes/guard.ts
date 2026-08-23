@@ -31,7 +31,7 @@ export const refuseParent = (c: Context<any, any, any>) =>
 export const refuseMember = (c: Context<any, any, any>) =>
   refuse(c, 'This account cannot spend from that household.')
 
-export type ParentAction = (
+type ParentAction = (
   account: GaslessAccount,
   family: Family,
   address: string,

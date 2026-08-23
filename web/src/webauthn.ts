@@ -20,7 +20,7 @@ const fromB64url = (s: string): ArrayBuffer => {
   return out.buffer as ArrayBuffer
 }
 
-export type PasskeyResult = { credentialId: string; prfKeyHex: string }
+type PasskeyResult = { credentialId: string; prfKeyHex: string }
 
 export function webauthnAvailable(): boolean {
   return typeof PublicKeyCredential !== 'undefined'

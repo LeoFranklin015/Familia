@@ -11,7 +11,7 @@
 import { buildOnboardingBatch } from './chain.js'
 import { waitForUserOp, withAccount } from './wdk.js'
 
-export type BootstrapState =
+type BootstrapState =
   | { status: 'running' }
   | { status: 'done'; txHash?: string }
   | { status: 'failed'; reason: string }

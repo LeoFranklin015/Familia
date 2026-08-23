@@ -80,7 +80,7 @@ const MIN_FEE_BUFFER = 1_000000n // 1 USD₮ — never approve a dust allowance
 const FEE_TTL_MS = 5_000
 let feeMemo: { at: number; value: Promise<bigint> } | null = null
 
-export function feePerOperation(): Promise<bigint> {
+function feePerOperation(): Promise<bigint> {
   if (!paymasterRead) return Promise.resolve(0n)
   if (!feeMemo || Date.now() - feeMemo.at > FEE_TTL_MS) {
     feeMemo = { at: Date.now(), value: readFeePerOperation() }
@@ -97,7 +97,7 @@ async function readFeePerOperation(): Promise<bigint> {
 }
 
 /** The allowance we want the paymaster to hold, at current prices. */
-export async function feeAllowanceTarget(): Promise<bigint> {
+async function feeAllowanceTarget(): Promise<bigint> {
   const target = (await feePerOperation()) * OPS_OF_HEADROOM
   return target > MIN_FEE_BUFFER ? target : MIN_FEE_BUFFER
 }
@@ -105,7 +105,7 @@ export async function feeAllowanceTarget(): Promise<bigint> {
 /** If the standing allowance has been drawn down, top it back up. Returns the
  *  calls to prepend — empty when there's nothing to do, so callers can always
  *  splice it in. */
-export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
+async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
   if (!USDT_PAYMASTER) return []
   const [allowance, perOp] = await Promise.all([
     assetRead.allowance(parent, USDT_PAYMASTER) as Promise<bigint>,
@@ -126,7 +126,7 @@ export async function maybeTopUpFeeAllowance(parent: string): Promise<Tx[]> {
  * we already hold. Minting per deposit would work exactly once and then fail
  * with "Mint timelock exceeded" for the rest of the day.
  */
-export const MINT_CHUNK = 100_000_000000n // 100,000 USD₮
+const MINT_CHUNK = 100_000_000000n // 100,000 USD₮
 
 /**
  * The chain id is a constant in this file, so tell ethers rather than letting
@@ -140,11 +140,11 @@ export const erc20 = new ethers.Interface([
   'function balanceOf(address) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
 ])
-export const faucetIface = new ethers.Interface([
+const faucetIface = new ethers.Interface([
   'function mint(address token, address to, uint256 amount) returns (uint256)',
 ])
 /** Aave's own view of the reserve. Only the supply rate is wanted. */
-export const poolRead = new ethers.Contract(AaveV3BaseSepolia.POOL, [
+const poolRead = new ethers.Contract(AaveV3BaseSepolia.POOL, [
   'function getReserveData(address) view returns (tuple(uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))',
 ], provider)
 
@@ -165,7 +165,7 @@ export async function supplyApr(): Promise<number> {
   }
 }
 
-export const poolIface = new ethers.Interface([
+const poolIface = new ethers.Interface([
   'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
   'function withdraw(address asset, uint256 amount, address to) returns (uint256)',
 ])
@@ -188,7 +188,7 @@ export const managerIface = new ethers.Interface([
 
 /** Our paymaster's settlement event — the authoritative record of what an
  *  account was actually charged, in USD₮, after the operation ran. */
-export const paymasterIface = new ethers.Interface([
+const paymasterIface = new ethers.Interface([
   'event Charged(address indexed account, uint256 gasCostWei, uint256 usdtCharged)',
   'function quote(uint256 gasCostWei) view returns (uint256)',
   'function usdtPerNativeUnit() view returns (uint256)',
@@ -213,7 +213,7 @@ export const managerRead = new ethers.Contract(MANAGER, managerIface, provider)
 export const paymasterRead = USDT_PAYMASTER
   ? new ethers.Contract(USDT_PAYMASTER, paymasterIface, provider)
   : null
-export const assetRead = new ethers.Contract(AAVE.ASSET, erc20, provider)
+const assetRead = new ethers.Contract(AAVE.ASSET, erc20, provider)
 export const aAssetRead = new ethers.Contract(AAVE.A_ASSET, erc20, provider)
 
 export type Tx = { to: string; value: bigint; data: string }
@@ -247,7 +247,7 @@ export async function buildOnboardingBatch(parent: string): Promise<Tx[]> {
   return txs
 }
 
-export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
+function buildDepositBatch(parent: string, amount: bigint): Tx[] {
   return [
     { to: AAVE.ASSET, value: 0n, data: erc20.encodeFunctionData('approve', [AAVE.POOL, amount]) },
     { to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('supply', [AAVE.ASSET, amount, parent, 0]) },
@@ -257,7 +257,7 @@ export function buildDepositBatch(parent: string, amount: bigint): Tx[] {
 /** Would the faucet let this account mint right now? It refuses with
  *  "Mint timelock exceeded" once per period, so ask before building a batch
  *  around it rather than discovering it in a reverted simulation. */
-export async function faucetWouldMint(parent: string, amount: bigint): Promise<boolean> {
+async function faucetWouldMint(parent: string, amount: bigint): Promise<boolean> {
   try {
     await provider.call({
       to: AAVE.FAUCET,
@@ -447,7 +447,7 @@ export function buildAllowlistBatch(
  * recipient, which is a single call. Nothing here can exceed the position,
  * because Aave itself refuses to withdraw more than is held.
  */
-export function buildGuardianPayBatch(to: string, amount: bigint): Tx[] {
+function buildGuardianPayBatch(to: string, amount: bigint): Tx[] {
   return [{ to: AAVE.POOL, value: 0n, data: poolIface.encodeFunctionData('withdraw', [AAVE.ASSET, amount, to]) }]
 }
 

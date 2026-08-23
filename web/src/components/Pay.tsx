@@ -15,7 +15,7 @@ import type { Recipient } from '../api'
  * back with a tick. That is the only defence against a mistyped address there
  * is, because a payment cannot be called back.
  */
-export function To({
+function To({
   value, onChange, onScan, recipients, problem, canScan,
 }: {
   value: string
@@ -66,7 +66,7 @@ export function To({
   )
 }
 
-export function Saved({
+function Saved({
   recipients, value, onPick,
 }: {
   recipients: Recipient[]

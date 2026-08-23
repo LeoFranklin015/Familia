@@ -1,4 +1,4 @@
-export class ApiError extends Error {
+class ApiError extends Error {
   status: number
   /** The server no longer knows this session. Not a failure of the action —
    *  the action never started, and no amount of retrying will help. */

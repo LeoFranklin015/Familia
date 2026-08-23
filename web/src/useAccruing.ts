@@ -10,7 +10,7 @@ const YEAR = 31_536_000
  * second, which reads as noise rather than as a number counting; at three it
  * ticks around once a second, which is legibly alive.
  */
-export const EXTRA_DP = 3
+const EXTRA_DP = 3
 const DP = 6 + EXTRA_DP
 
 /**

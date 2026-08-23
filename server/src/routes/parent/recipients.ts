@@ -83,7 +83,7 @@ recipientRoutes.post('/api/recipients/:id/remove', (c) =>
   }))
 
 /** Who currently has this address on their own allowlist. */
-export function holdersOf(family: Family, address: string) {
+function holdersOf(family: Family, address: string) {
   return family.members.filter(
     (m) => m.scopeId && !m.revoked && m.allowOnly
       && m.allowed?.some((a) => a.toLowerCase() === address.toLowerCase()),

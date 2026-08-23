@@ -12,7 +12,7 @@ import type { Note } from '../Parent'
  * Compounded per second, because that is what a supplier actually receives —
  * though at testnet rates the difference from the simple figure is invisible.
  */
-export function apyText(apr: number): string {
+function apyText(apr: number): string {
   if (apr <= 0) return 'nothing yet'
   const apy = (1 + apr / 31_536_000) ** 31_536_000 - 1
   return `${(apy * 100).toFixed(apy < 0.001 ? 4 : 2)}% a year`

@@ -73,7 +73,13 @@ async function batchFor(family: Family, address: string, body: Record<string, un
     }
     case 'allowlist': {
       const m = member()
-      if (!m) return null
+      if (!m) throw new Error('unknown member')
+      // The same refusal the write gives. Returning "nothing to price" here
+      // would have the confirmation sheet say the operation is free, and the
+      // write then reject it.
+      if (!m.scopeId || m.revoked) {
+        throw new Error('Give them a limit first, then choose where it can go.')
+      }
       return allowlistPlan(family, m, Boolean(body.only), (body.allowed as string[]) ?? []).txs
     }
     case 'settle': {

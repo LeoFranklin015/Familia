@@ -35,7 +35,7 @@ const tabsFor = (waiting: number): ReadonlyArray<Tab<TabId>> => [
  * the funder — so the person themselves is the only guard, and they are asked
  * each time.
  */
-export type Spec = {
+type Spec = {
   /** What the confirmation sheet says is about to happen. */
   title: string
   /** What the operation does, if the quote can't say. */

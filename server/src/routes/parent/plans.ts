@@ -97,7 +97,7 @@ export function revokePlan(family: Family, member: Member): Tx[] {
   return buildRevokeBatch(member.scopeId, outstandingCaps(family, 0n, member.id))
 }
 
-export type AllowlistChange = {
+type AllowlistChange = {
   /** The list as it will be, canonicalised against the household's book. */
   next: string[]
   /** Addresses to permit, and addresses to withdraw. */

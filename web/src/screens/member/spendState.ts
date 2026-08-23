@@ -1,7 +1,6 @@
 import type { MemberState } from '../../api'
-import { base } from '../../lib/money'
 import { isAllowed, labelFor, looksLikeAddress } from '../../lib/address'
-import { two } from '../../lib/money'
+import { base, two } from '../../lib/money'
 
 /**
  * Whether this payment can happen, and what to call the button if not.
@@ -15,7 +14,7 @@ import { two } from '../../lib/money'
  * about a sixth of the time, so typing exactly the number on screen read as
  * being *over* the limit.
  */
-export type SpendState = {
+type SpendState = {
   /** Base units of the amount typed. */
   value: number
   /** What the week has left, which is the number a person thinks in. */

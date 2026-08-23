@@ -20,7 +20,7 @@ export type GaslessAccount = {
   dispose(): void
 }
 
-export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
+function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
   // Cast: the beta .d.ts types registerWallet against the base WalletManager,
   // whose config is optional — structurally fine at runtime.
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as unknown as Parameters<WDK['registerWallet']>[1], {
@@ -71,7 +71,7 @@ export function createWdk(mnemonic: string, opts: { memberGuard?: boolean } = {}
  * while USD₮-priced ones must reach our ERC-7677 service. `paymasterAddress`
  * is pinned so WDK throws if the service ever names a different contract.
  */
-export function createUsdtPayingWdk(mnemonic: string): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
+function createUsdtPayingWdk(mnemonic: string): { wdk: WDK; getAccount: () => Promise<GaslessAccount> } {
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm7702Gasless as unknown as Parameters<WDK['registerWallet']>[1], {
     provider: RPC_URL,
     bundlerUrl: BUNDLER_URL,
