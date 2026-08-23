@@ -70,18 +70,35 @@ its own key, because it is not the household's account.
 
 ## Contracts
 
+Ours, deployed this weekend:
+
 | Contract | Address |
 |---|---|
-| `ScopedSpendManager`, ours | [`0x6c1C15B3…`](https://sepolia.basescan.org/address/0x6c1C15B3c5A77eBA21c3830f0FcD8D2b22635240) |
-| `UsdtPaymaster`, ours | [`0x8656b0E5…`](https://sepolia.basescan.org/address/0x8656b0E5CA10a506B42615C78Fa8F137F7f1Ea7B) |
-| `Simple7702Account`, eth-infinitism v0.8 | [`0xd066936D…`](https://sepolia.basescan.org/address/0xd066936D3BbBa7E266572143bd30a9c7894A9EDb) |
-| EntryPoint v0.8 | `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` |
-| Aave V3 Pool | `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27` |
-| USD₮ | `0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a` |
-| `aBasSepUSDT` | `0xcE3CAae5Ed17A7AafCEEbc897DE843fA6CC0c018` |
+| `ScopedSpendManager` | [`0x6c1C15B3…`](https://sepolia.basescan.org/address/0x6c1C15B3c5A77eBA21c3830f0FcD8D2b22635240) |
+| `UsdtPaymaster` | [`0x8656b0E5…`](https://sepolia.basescan.org/address/0x8656b0E5CA10a506B42615C78Fa8F137F7f1Ea7B) |
 
-Aave addresses come from `@bgd-labs/aave-address-book` on both the JS and
-Solidity side. No hex is pasted anywhere, including from here.
+Aave V3 on Base Sepolia. Nothing here is a mock: the pot is a real position in
+Aave's own pool, and a spend redeems Aave's own aToken.
+
+| Aave contract | Address |
+|---|---|
+| Pool, where the money is supplied and redeemed | [`0x8bAB6d1b…`](https://sepolia.basescan.org/address/0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27) |
+| USD₮, the family money | [`0x0a215D8b…`](https://sepolia.basescan.org/address/0x0a215D8ba66387DCA84B284D18c3B4ec3de6E54a) |
+| `aBasSepUSDT`, what the parent holds | [`0xcE3CAae5…`](https://sepolia.basescan.org/address/0xcE3CAae5Ed17A7AafCEEbc897DE843fA6CC0c018) |
+| Pool addresses provider | [`0xE4C23309…`](https://sepolia.basescan.org/address/0xE4C23309117Aa30342BFaae6c95c6478e0A4Ad00) |
+| Faucet, unpermissioned | [`0xD9145b5F…`](https://sepolia.basescan.org/address/0xD9145b5F45Ad4519c7ACcD6E0A4A82e83bB8A6Dc) |
+
+Every Aave address comes from
+[`@bgd-labs/aave-address-book`](https://github.com/bgd-labs/aave-address-book)
+at build time, on both the JavaScript and the Solidity side, so none of it is
+pasted hex that can rot. [Aave V3 docs](https://aave.com/docs).
+
+Account abstraction:
+
+| | Address |
+|---|---|
+| EntryPoint v0.8 | [`0x4337084D…`](https://sepolia.basescan.org/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108) |
+| `Simple7702Account`, eth-infinitism v0.8, unmodified | [`0xd066936D…`](https://sepolia.basescan.org/address/0xd066936D3BbBa7E266572143bd30a9c7894A9EDb) |
 
 A kid's spend redeems the parent's `aUSDT` and pays the merchant in the same
 transaction:
