@@ -28,6 +28,7 @@ wdk-skill.md
 tasks/
 *.png
 !web/public/icon.png
+!web/public/flow-diagram.png
 *.jpg
 *.jpeg
 frontend-slides.md

@@ -75,10 +75,23 @@ const immutable = (c: Context, next: Next) => {
 }
 app.use('/assets/*', immutable, serveStatic({ root: '../web/dist' }))
 app.use('/fonts/*', immutable, serveStatic({ root: '../web/dist' }))
-// The icon sits at the root rather than under /assets, so without its own
-// route it fell through to the SPA handler below and every request for it
-// returned the HTML shell.
-app.use('/icon.png', serveStatic({ root: '../web/dist', path: 'icon.png' }))
+
+/**
+ * Files that sit at the root of the build rather than under `/assets`: the
+ * icon, the flow diagram, anything else `web/public` grows later.
+ *
+ * Without this they fall through to the SPA handler and every request for one
+ * gets the HTML shell back with a 200 and a content-type of text/html, which
+ * looks like a broken image and reads like nothing at all in a log. Named by
+ * extension rather than one route per file, so adding a file to `web/public`
+ * is enough. `serveStatic` calls `next()` when the file is not there, so an
+ * unknown path still reaches the shell.
+ */
+const ROOT_FILE = /^\/[^/]+\.(png|svg|ico|json|txt|webmanifest)$/
+app.use('*', (c, next) =>
+  ROOT_FILE.test(c.req.path)
+    ? serveStatic({ root: '../web/dist' })(c, next)
+    : next())
 app.get(
   '*',
   (c, next) => {

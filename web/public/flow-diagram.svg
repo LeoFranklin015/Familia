@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" width="1000" height="610" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+<defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#5fd3a3"/></marker><marker id="hd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#5f7a6d"/></marker></defs>
+<rect width="1000" height="610" fill="#07100c"/>
+<rect x="34" y="30" width="132" height="42" rx="12" fill="#0d3b2c" stroke="#5fd3a3" stroke-width="1.5"/>
+<text x="100" y="57" fill="#d7f0e4" font-size="13.5" font-weight="600" text-anchor="middle">Parent</text>
+<line x1="100" y1="72" x2="100" y2="548" stroke="#5fd3a3" stroke-width="1" opacity="0.16"/>
+<rect x="215" y="30" width="150" height="42" rx="12" fill="#0d3b2c" stroke="#5fd3a3" stroke-width="1.5"/>
+<text x="290" y="57" fill="#d7f0e4" font-size="13.5" font-weight="600" text-anchor="middle">Maya, age 9</text>
+<line x1="290" y1="72" x2="290" y2="548" stroke="#5fd3a3" stroke-width="1" opacity="0.16"/>
+<rect x="412" y="30" width="196" height="42" rx="12" fill="#0d3b2c" stroke="#5fd3a3" stroke-width="1.5"/>
+<text x="510" y="57" fill="#d7f0e4" font-size="13.5" font-weight="600" text-anchor="middle">ScopedSpendManager</text>
+<line x1="510" y1="72" x2="510" y2="548" stroke="#5fd3a3" stroke-width="1" opacity="0.16"/>
+<rect x="664" y="30" width="132" height="42" rx="12" fill="#0d3b2c" stroke="#5fd3a3" stroke-width="1.5"/>
+<text x="730" y="57" fill="#d7f0e4" font-size="13.5" font-weight="600" text-anchor="middle">Aave V3</text>
+<line x1="730" y1="72" x2="730" y2="548" stroke="#5fd3a3" stroke-width="1" opacity="0.16"/>
+<rect x="836" y="30" width="148" height="42" rx="12" fill="#0d3b2c" stroke="#5fd3a3" stroke-width="1.5"/>
+<text x="910" y="57" fill="#d7f0e4" font-size="13.5" font-weight="600" text-anchor="middle">Corner shop</text>
+<line x1="910" y1="72" x2="910" y2="548" stroke="#5fd3a3" stroke-width="1" opacity="0.16"/>
+<text x="24" y="106" fill="#5f7a6d" font-size="11" letter-spacing="1.5">SET UP ONCE</text>
+<line x1="106" y1="136" x2="722" y2="136" stroke="#5f7a6d" stroke-width="1.8" marker-end="url(#hd)"/>
+<circle cx="106" cy="136" r="11" fill="#07100c" stroke="#5f7a6d" stroke-width="1.6"/>
+<text x="106" y="140" fill="#5f7a6d" font-size="12" font-weight="700" text-anchor="middle">1</text>
+<text x="415.0" y="125" fill="#eaf3ee" font-size="13.5" text-anchor="middle">supply 500 USDT</text>
+<text x="415.0" y="158" fill="#8ea79a" font-size="11.5" text-anchor="middle">the parent holds aUSDT, and it earns from here on</text>
+<line x1="106" y1="200" x2="502" y2="200" stroke="#5f7a6d" stroke-width="1.8" marker-end="url(#hd)"/>
+<circle cx="106" cy="200" r="11" fill="#07100c" stroke="#5f7a6d" stroke-width="1.6"/>
+<text x="106" y="204" fill="#5f7a6d" font-size="12" font-weight="700" text-anchor="middle">2</text>
+<text x="305.0" y="189" fill="#eaf3ee" font-size="13.5" text-anchor="middle">grant: 20 a week, 5 at a time</text>
+<text x="305.0" y="222" fill="#8ea79a" font-size="11.5" text-anchor="middle">written on-chain before Maya has an account</text>
+<line x1="24" y1="240" x2="976" y2="240" stroke="#5fd3a3" stroke-width="1" opacity="0.14"/>
+<text x="24" y="276" fill="#5f7a6d" font-size="11" letter-spacing="1.5">EVERY PAYMENT</text>
+<line x1="296" y1="308" x2="502" y2="308" stroke="#5fd3a3" stroke-width="1.8" marker-end="url(#h)"/>
+<circle cx="296" cy="308" r="11" fill="#07100c" stroke="#5fd3a3" stroke-width="1.6"/>
+<text x="296" y="312" fill="#5fd3a3" font-size="12" font-weight="700" text-anchor="middle">3</text>
+<text x="400.0" y="297" fill="#eaf3ee" font-size="13.5" text-anchor="middle">spend(8, shop)</text>
+<text x="400.0" y="330" fill="#8ea79a" font-size="11.5" text-anchor="middle">signed by Maya, and sponsored</text>
+<path d="M516 356 h56 v34 h-58" fill="none" stroke="#5fd3a3" stroke-width="1.8" marker-end="url(#h)"/>
+<circle cx="516" cy="356" r="11" fill="#07100c" stroke="#5fd3a3" stroke-width="1.6"/>
+<text x="516" y="360" fill="#5fd3a3" font-size="12" font-weight="700" text-anchor="middle">4</text>
+<text x="584" y="360" fill="#eaf3ee" font-size="13.5">cap, period, expiry, allowed address</text>
+<text x="584" y="380" fill="#8ea79a" font-size="11.5">outside any one of them, the whole thing reverts</text>
+<line x1="516" y1="444" x2="722" y2="444" stroke="#5fd3a3" stroke-width="1.8" marker-end="url(#h)"/>
+<circle cx="516" cy="444" r="11" fill="#07100c" stroke="#5fd3a3" stroke-width="1.6"/>
+<text x="516" y="448" fill="#5fd3a3" font-size="12" font-weight="700" text-anchor="middle">5</text>
+<text x="620.0" y="433" fill="#eaf3ee" font-size="13.5" text-anchor="middle">pull 8 aUSDT</text>
+<text x="620.0" y="466" fill="#8ea79a" font-size="11.5" text-anchor="middle">from the parent’s position</text>
+<line x1="736" y1="506" x2="902" y2="506" stroke="#5fd3a3" stroke-width="1.8" marker-end="url(#h)"/>
+<circle cx="736" cy="506" r="11" fill="#07100c" stroke="#5fd3a3" stroke-width="1.6"/>
+<text x="736" y="510" fill="#5fd3a3" font-size="12" font-weight="700" text-anchor="middle">6</text>
+<text x="820.0" y="495" fill="#eaf3ee" font-size="13.5" text-anchor="middle">8 USDT</text>
+<text x="820.0" y="528" fill="#8ea79a" font-size="11.5" text-anchor="middle">Aave redeems it</text>
+<path d="M956 294 h14 v228 h-14" fill="none" stroke="#5fd3a3" stroke-width="1.6" opacity="0.55"/>
+<text x="982" y="408" fill="#5fd3a3" font-size="11.5" font-weight="600" text-anchor="middle" transform="rotate(90 982 408)">one transaction</text>
+<text x="24" y="584" fill="#5f7a6d" font-size="12">Netflix is the same flow with a biller where Maya is: 15.49 a month, only to its own address, twelve times, then it stops.</text>
+</svg>
