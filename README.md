@@ -23,8 +23,6 @@ Tether WDK Track 2 (gasless), on Base Sepolia.
 
 ## How a payment works
 
-Setup happens once. Everything below the line happens on every payment, and all
-of it is one transaction.
 
 ![How a payment flows](web/public/flow-diagram.png)
 
