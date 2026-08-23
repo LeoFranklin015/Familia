@@ -5,7 +5,7 @@
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const CANONICAL_DELEGATE = '0xe6Cae83BdE06E4c305530e199D7217f42808555B'
 const bundlerUrl = `https://api.pimlico.io/v2/11155111/rpc?apikey=${process.env.PIMLICO_API_KEY}`

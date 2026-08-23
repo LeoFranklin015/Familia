@@ -1,9 +1,9 @@
 // Show who paid for each operation: which paymaster covered it, and whether
 // the sender was charged in USD₮ or sponsored outright.
-//   node spikes/verify-fees.mjs <txHash> [<txHash> ...]
+//   node paymaster/verify/decode-fee.mjs <txHash> [<txHash> ...]
 import { ethers } from 'ethers'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const p = new ethers.JsonRpcProvider(process.env.BASE_SEPOLIA_RPC_URL)
 const OURS = (process.env.USDT_PAYMASTER_ADDRESS ?? '').toLowerCase()

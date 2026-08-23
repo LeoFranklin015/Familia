@@ -1,0 +1,19 @@
+# The paymaster is its own project: a different contract, a different
+# deployment, a different reason to exist. It borrows the manager's libs
+# rather than vendoring a second copy of forge-std and account-abstraction.
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["../contracts/lib"]
+solc = "0.8.28"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+remappings = [
+  "forge-std/=../contracts/lib/forge-std/src/",
+  "account-abstraction/=../contracts/lib/account-abstraction/contracts/",
+  "aave-address-book/=../contracts/lib/aave-address-book/src/",
+  "@openzeppelin/contracts/=../contracts/lib/openzeppelin-contracts/contracts/",
+]

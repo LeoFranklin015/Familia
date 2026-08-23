@@ -1,13 +1,13 @@
 // Decode a member's payment so the settlement path is visible: aUSDT leaves
 // the parent, Aave burns it, and USD₮ lands with the merchant — one tx.
-//   node spikes/verify-spend.mjs <txHash>
+//   node server/verify/decode-spend.mjs <txHash>
 import { ethers } from 'ethers'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const hash = process.argv[2]
 if (!hash) {
-  console.error('usage: node spikes/verify-spend.mjs <txHash>')
+  console.error('usage: node server/verify/decode-spend.mjs <txHash>')
   process.exit(1)
 }
 

@@ -9,11 +9,11 @@
 //      is an EOA, so no entrant can obtain it — which is exactly why the app
 //      itself runs fully sponsored on Base Sepolia instead.
 //
-// Run: node spikes/spike2-usdt-fee-quote.mjs
+// Run: node paymaster/verify/why-not-sepolia.mjs
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const CHAIN_ID = 11155111
 const PIMLICO_USDT = '0xd077A400968890Eacc75cdc901F0356c943e4fDb'

@@ -11,13 +11,13 @@
 //
 // Needs the server running so the ERC-7677 service is reachable:
 //   cd server && bun run start
-//   node spikes/spike3-own-usdt-paymaster.mjs
+//   node paymaster/verify/pay-gas-in-usdt.mjs
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { ethers } from 'ethers'
 import { AaveV3BaseSepolia } from '@bgd-labs/aave-address-book'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const CHAIN_ID = 84532
 const FAUCET = '0xD9145b5F45Ad4519c7ACcD6E0A4A82e83bB8A6Dc'

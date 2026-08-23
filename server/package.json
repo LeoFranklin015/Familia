@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "test": "tsx --test src/**/*.test.ts",
-    "postinstall": "node ../scripts/install-shims.mjs"
+    "postinstall": "node ./install-shims.mjs"
   },
   "dependencies": {
     "@bgd-labs/aave-address-book": "^4.0.0",

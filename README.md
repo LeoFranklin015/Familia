@@ -26,7 +26,7 @@ touches a native token at any point.
 ## The five demo beats
 
 All verified on Base Sepolia. Run them yourself against a live server with
-`./scripts/e2e-demo.sh`.
+`./server/e2e-demo.sh`.
 
 | # | Beat | Proof |
 |---|---|---|
@@ -66,6 +66,28 @@ everything: deposits, grants, spends, approvals and revocations are all
 WDK-built UserOperations. Aave and our two contracts are called as plain
 calldata inside those operations. This is a consumer app, not an SDK.
 
+## Layout
+
+```
+contracts/   ScopedSpendManager — the allowance rules, 19 tests
+paymaster/   UsdtPaymaster — gas paid in USDT, 9 tests, plus its own evidence
+server/      the API, the WDK integration, and the ERC-7677 service
+web/         the phone app
+```
+
+Four things, four directories. The paymaster is separate from the manager
+because it is a separate contract solving a separate problem — one bounds what
+a family member may spend, the other lets an account pay for its own
+transaction without ever holding a native coin. They share a `lib/`, not a
+build.
+
+The ERC-7677 *service* lives in `server/` rather than `paymaster/` because it
+is an HTTP route on the running server, not a second process. It is fifty
+lines, stateless and keyless: the contract is permissionless, so the service
+has nothing to sign and no secret to hold.
+
+Each directory carries the scripts that prove its own claims, under `verify/`.
+
 ## Architecture
 
 ```
@@ -81,7 +103,7 @@ member ──WDK 7702──▶ manager.spend(id, merchant, 8)
                        └─▶ POOL.withdraw(USD₮, 8, merchant)         same tx
 ```
 
-Decoded from a real payment — `node spikes/verify-spend.mjs <txHash>`:
+Decoded from a real payment — `node server/verify/decode-spend.mjs <txHash>`:
 
 ```
 aBasSepUSDT   parent  → manager     8.0    the position is pulled
@@ -159,18 +181,18 @@ Sepolia**: Pimlico's list there is USDC/EURC/LINK/PIM, Candide's is CTT alone.
 The one testnet USD₮ either accepts is on Ethereum Sepolia (`0xd077A4…`), and
 it is owner-only-mint with an **EOA** owner — so no entrant can obtain any. A
 fee quote against it fails at the balance check before a payment is even
-attempted (`spikes/spike2-usdt-fee-quote.mjs` demonstrates exactly that).
+attempted (`paymaster/verify/why-not-sepolia.mjs` demonstrates exactly that).
 
-So the paymaster is ours: [`UsdtPaymaster.sol`](contracts/src/UsdtPaymaster.sol)
+So the paymaster is ours: [`UsdtPaymaster.sol`](paymaster/src/UsdtPaymaster.sol)
 with a small [ERC-7677 service](server/src/paymaster-service.ts) in front that
 WDK's `paymasterUrl` points at. It is permissionless — authorisation is the
 account's USD₮ approval, not a signed voucher — which is why the service holds
 no key and keeps no state. Validation reserves 120% of the estimate; `postOp`
 charges the **actual** cost. End to end in
-`spikes/spike3-own-usdt-paymaster.mjs`, from an account that never holds a wei.
+`paymaster/verify/pay-gas-in-usdt.mjs`, from an account that never holds a wei.
 
 Who paid for what, decoded from the run linked above
-(`node spikes/verify-fees.mjs <txHash>`):
+(`node paymaster/verify/decode-fee.mjs <txHash>`):
 
 | Operation | Paymaster | Sender charged |
 |---|---|---|
@@ -308,7 +330,7 @@ all; USDC and DAI are in the same state, GHO's facilitator bucket is full, and
 an aToken cannot be obtained any other way — the faucet only mints underlyings.
 **Base Sepolia**'s USDT reserve is uncapped, liquid, and mintable from an
 unpermissioned faucet. Check both for yourself:
-`node spikes/probe-aave-reserves.mjs`.
+`node server/verify/aave-reserves.mjs`.
 
 The cost of that choice is that no provider prices gas in USD₮ there, which is
 why we run our own paymaster (above) rather than dropping the requirement.
@@ -342,7 +364,7 @@ Four things that cost real time, recorded because they aren't in any doc.
 3. **`wdk-secret-manager` needs a shim under Node.** It requires `bare-crypto`,
    whose binding only loads inside the Bare runtime, and uses exactly one API
    from it — `pbkdf2Sync`. We alias the module to `node:crypto` post-install
-   (`server/shims/bare-crypto`, wired by `scripts/install-shims.mjs`). Also:
+   (`server/shims/bare-crypto`, wired by `server/install-shims.mjs`). Also:
    `generateAndEncrypt` is `async` in the implementation despite a synchronous
    signature in the shipped `.d.ts`. Await it.
 4. **The Aave testnet faucet has a per-address mint timelock.** One mint per
@@ -382,7 +404,7 @@ Open the URL, start a family, and follow the two-step setup. Passkeys are tied
 to a browser profile, so open a member's invite link in a **second browser or
 private window** — otherwise their Face ID unlocks the parent's account.
 
-`./scripts/e2e-demo.sh` runs all five beats headlessly via the passphrase
+`./server/e2e-demo.sh` runs all five beats headlessly via the passphrase
 vault path, printing every transaction hash. This was last verified from a
 fresh `git clone`.
 
@@ -391,24 +413,23 @@ Other things worth running:
 ```bash
 cd contracts && forge test                 # 28 tests: manager + paymaster
 cd server && bun run test                  # passkey vault, PRF and passphrase
-node spikes/spike0-sponsored-op.mjs        # sponsored op from a fresh empty EOA
-node spikes/spike1-aave-roundtrip.mjs      # gasless Aave deposit and withdraw
-node spikes/spike2-usdt-fee-quote.mjs      # why Ethereum Sepolia's USD₮ is unusable
-node spikes/spike3-own-usdt-paymaster.mjs  # gas paid in USD₮, no native coin held
-node spikes/probe-aave-reserves.mjs        # the supply-cap evidence quoted above
-node spikes/verify-spend.mjs <txHash>      # decode a payment's settlement path
-node spikes/verify-fees.mjs <txHash>       # decode who paid for an operation
+node server/verify/sponsored-op.mjs        # sponsored op from a fresh empty EOA
+node server/verify/aave-roundtrip.mjs      # gasless Aave deposit and withdraw
+node paymaster/verify/why-not-sepolia.mjs      # why Ethereum Sepolia's USD₮ is unusable
+node paymaster/verify/pay-gas-in-usdt.mjs  # gas paid in USD₮, no native coin held
+node server/verify/aave-reserves.mjs        # the supply-cap evidence quoted above
+node server/verify/decode-spend.mjs <txHash>      # decode a payment's settlement path
+node paymaster/verify/decode-fee.mjs <txHash>       # decode who paid for an operation
 ```
 
 The contracts above are already deployed. To redeploy:
 
 ```bash
-cd contracts
-forge script script/DeployBase.s.sol      --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast
-forge script script/DeployPaymaster.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast
+(cd contracts && forge script script/DeployBase.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
+(cd paymaster && forge script script/Deploy.s.sol     --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
 ```
 
-`DeployPaymaster` also funds the paymaster's EntryPoint deposit and stakes it;
+The paymaster deploy script also funds the paymaster's EntryPoint deposit and stakes it;
 without the stake, bundlers reject every operation (field note 4).
 
 ## Reuse disclosure

@@ -9,7 +9,7 @@ import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { ethers } from 'ethers'
 import { AaveV3Sepolia } from '@bgd-labs/aave-address-book'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const CANONICAL_DELEGATE = '0xe6Cae83BdE06E4c305530e199D7217f42808555B'
 const PIMLICO_USDT = '0xd077A400968890Eacc75cdc901F0356c943e4fDb'

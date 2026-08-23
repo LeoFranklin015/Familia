@@ -4,11 +4,11 @@
 // bucket is full. EURS is the only stable reserve that is active, unfrozen,
 // uncapped and faucet-mintable — so it is the demo pot.
 //
-// Run: node spikes/probe-aave-reserves.mjs
+// Run: node server/verify/aave-reserves.mjs
 import { ethers } from 'ethers'
 import { AaveV3Sepolia } from '@bgd-labs/aave-address-book'
 
-process.loadEnvFile(new URL('../.env', import.meta.url).pathname)
+process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
 
 const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL)
 const probe = ethers.Wallet.createRandom().address

@@ -2,7 +2,7 @@
   "name": "kin-root",
   "private": true,
   "type": "module",
-  "description": "Root workspace: spike scripts and shared WDK deps for Kin",
+  "description": "Root workspace: shared WDK dependencies and verification scripts",
   "dependencies": {
     "@bgd-labs/aave-address-book": "^4.0.0",
     "@tetherto/wdk": "1.0.0-beta.16",
@@ -11,6 +11,6 @@
     "ethers": "^6.13.0"
   },
   "scripts": {
-    "postinstall": "node scripts/install-shims.mjs"
+    "postinstall": "node server/install-shims.mjs"
   }
 }
