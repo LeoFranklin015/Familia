@@ -68,6 +68,13 @@ export type ParentState = {
   symbol: string
   /** The signed-in guardian. */
   you: { name: string; address: string }
+  /**
+   * The sum of everyone's weekly limits, and the exact amount the spend
+   * manager is approved for on-chain. Computed on the server because it is
+   * the same number that sizes that approval; deriving it here in floats was
+   * a second answer that could silently disagree.
+   */
+  promised: string
   wallet: {
     address: string
     pot: string

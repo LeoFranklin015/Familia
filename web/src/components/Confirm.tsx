@@ -28,13 +28,7 @@ export type Pending = {
   run: () => void
 }
 
-export function Confirm({
-  pending, onCancel, onPassphrase,
-}: {
-  pending: Pending | null
-  onCancel: () => void
-  onPassphrase?: () => void
-}) {
+export function Confirm({ pending, onCancel }: { pending: Pending | null; onCancel: () => void }) {
   const panel = useDialog<HTMLDivElement>(Boolean(pending), onCancel)
   if (!pending) return null
   const { title, fee, symbol, covered, blocked, feeUnknown } = pending
@@ -71,11 +65,6 @@ export function Confirm({
         </button>
         <div style={{ display: 'flex', gap: 18, marginTop: 8 }}>
           <button className="link link--muted tap" onClick={onCancel}>Cancel</button>
-          {onPassphrase && (
-            <button className="link tap" onClick={onPassphrase} disabled={Boolean(blocked)}>
-              Use a passphrase
-            </button>
-          )}
         </div>
       </div>
     </div>

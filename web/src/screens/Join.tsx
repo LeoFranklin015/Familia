@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { rememberCredentialId } from '../auth'
 import { createPasskey, webauthnAvailable } from '../webauthn'
 import { Blob, Icon, Skeleton } from '../components/ui'
 
@@ -28,7 +29,7 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
 
   const finish = async (body: Record<string, string>) => {
     const r = await api.post<{ credentialId: string }>(`/api/join/${token}`, body)
-    localStorage.setItem('kin_credentialId', r.credentialId)
+    rememberCredentialId(r.credentialId)
     onJoined()
   }
 

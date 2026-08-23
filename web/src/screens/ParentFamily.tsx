@@ -218,13 +218,16 @@ export function FamilyTab({
         />
       )}
 
-      <BookSheet
-        open={sheet === 'book'}
+      {/* Mounted only while open: its body maps every recipient and, for each,
+          scans the members holding it — all of it discarded on every poll
+          while the sheet was closed. */}
+      {sheet === 'book' && <BookSheet
+        open
         st={st}
         onClose={() => setSheet(null)}
         act={act}
         reload={reload}
-      />
+      />}
     </>
   )
 }

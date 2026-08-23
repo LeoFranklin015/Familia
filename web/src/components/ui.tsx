@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { figureSize, split, splitLive } from '../lib/money'
+import { split, splitLive } from '../lib/money'
+import { useAccruing } from '../useAccruing'
 
 /**
  * An amount, split three ways.
@@ -10,13 +10,12 @@ import { figureSize, split, splitLive } from '../lib/money'
  * throughout, so digits don't shift as the figure changes.
  */
 export function Figure({
-  value, unit, size = 'xl', live = false,
+  value, unit, live = false,
 }: {
   value: string
   /** Shown small and low, after the tail. Omit inside a card that already
    *  names the currency. */
   unit?: string
-  size?: 'xl' | 'md'
   /** Keep every trailing digit and mark the tail as moving. Used where the
    *  figure is carried forward between reads, so the last digits change
    *  several times a second. */
@@ -24,7 +23,7 @@ export function Figure({
 }) {
   const { big, cents, tail } = live ? splitLive(value) : split(value)
   return (
-    <div className={`figure${size === 'md' ? ' figure--md' : ''}`}>
+    <div className="figure">
       <span className="figure__big">{big}</span>
       <span className="figure__cents">{cents}</span>
       {tail && <span className={`figure__tail${live ? ' figure__tail--live' : ''}`}>{tail}</span>}
@@ -145,6 +144,22 @@ export function InfoButton({ label, onClick }: { label: string; onClick: () => v
   )
 }
 
-export function Empty({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
-  return <p className={`empty${bare ? ' empty--bare' : ''}`} role="status">{children}</p>
+/**
+ * A figure that keeps counting.
+ *
+ * Its own component so the timer inside `useAccruing` re-renders this and
+ * nothing else. Called from a screen, it re-rendered that screen's whole
+ * subtree five times a second — recomputing sums and reallocating lists — to
+ * animate three digits.
+ */
+export function LiveFigure({
+  balance, apr, readAt, unit,
+}: {
+  balance: string
+  apr: number
+  readAt: number
+  unit?: string
+}) {
+  const value = useAccruing(balance, apr, readAt)
+  return <Figure value={value} unit={unit} live={apr > 0} />
 }

@@ -47,7 +47,7 @@ export function Scan({ onFound, onCancel }: { onFound: (address: string) => void
 
   useEffect(() => {
     let stream: MediaStream | null = null
-    let raf = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
     let stopped = false
 
     ;(async () => {
@@ -76,7 +76,10 @@ export function Scan({ onFound, onCancel }: { onFound: (address: string) => void
               if (address) { found.current(address); return }
             }
           } catch { /* a frame that couldn't be read; the next one will do */ }
-          raf = requestAnimationFrame(() => { void tick() })
+          // Ten times a second. Barcode detection is multi-millisecond image
+          // work, and at frame rate it pins a phone's CPU for a job nobody can
+          // tell apart from this.
+          timer = setTimeout(() => { void tick() }, 100)
         }
         void tick()
       } catch (e) {
@@ -91,7 +94,7 @@ export function Scan({ onFound, onCancel }: { onFound: (address: string) => void
 
     return () => {
       stopped = true
-      cancelAnimationFrame(raf)
+      clearTimeout(timer)
       stream?.getTracks().forEach((t) => t.stop())
     }
   }, [])

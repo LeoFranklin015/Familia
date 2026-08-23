@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api'
+import { knownCredentialId, rememberCredentialId } from '../auth'
 import { createPasskey, unlockPasskey, webauthnAvailable } from '../webauthn'
 import { Blob, Icon } from '../components/ui'
 
@@ -39,7 +40,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
 
   const finish = async (body: Record<string, string>) => {
     const r = await api.post<{ credentialId: string }>(`/api/join/${token}`, body)
-    localStorage.setItem('kin_credentialId', r.credentialId)
+    rememberCredentialId(r.credentialId)
     onReady()
   }
 
@@ -67,9 +68,8 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
       const pk = await unlockPasskey()
       if (!pk) throw new Error('This device could not use a passkey. Try your passphrase.')
       await api.post('/api/session', { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex })
-      // The passphrase fallback reads this back; without it, every later
-      // write on this device would have no credential to unlock.
-      localStorage.setItem('kin_credentialId', pk.credentialId)
+      // Without this the passphrase fallback has no credential to unlock.
+      rememberCredentialId(pk.credentialId)
       onReady()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not sign in.')
@@ -79,7 +79,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
   const signInPassphrase = async () => {
     setErr(''); setBusy(true)
     try {
-      const credentialId = localStorage.getItem('kin_credentialId')
+      const credentialId = knownCredentialId()
       if (!credentialId) throw new Error("There's no account on this device yet.")
       await api.post('/api/session', { credentialId, passphrase })
       onReady()

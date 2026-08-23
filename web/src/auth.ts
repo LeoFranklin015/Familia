@@ -1,4 +1,3 @@
-import { api } from './api'
 import { unlockPasskey } from './webauthn'
 
 /**
@@ -8,12 +7,13 @@ import { unlockPasskey } from './webauthn'
  * before any other payment. Nothing durable is held: the PRF output goes
  * straight into the request that needs it and is not kept afterwards.
  *
- * Accounts without a passkey fall back to a passphrase, which the caller
+ * Accounts without a passkey fall back to a passphrase, which the screen
  * collects. It is deliberately not cached — the point of asking each time is
  * lost if the answer is remembered.
  */
 export type Approval = { credentialId: string; prfKeyHex?: string; passphrase?: string }
 
+/** The authenticator has no PRF here. The caller should ask for a passphrase. */
 export class NeedsPassphrase extends Error {
   constructor() { super('passphrase required') }
 }
@@ -31,32 +31,30 @@ export async function approve(): Promise<Approval> {
   return { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex }
 }
 
-/** The credential this browser last used, for the passphrase path. */
-export function knownCredentialId(): string | null {
-  return localStorage.getItem('kin_credentialId')
-}
-
 /**
- * Run a write with fresh approval attached. `getApproval` is supplied by the
- * screen so it can fall back to its own passphrase prompt.
+ * The credential this browser last used.
+ *
+ * Both halves live here. Three screens used to spell the storage key by hand
+ * while only this file read it back, which is how signing in on a second
+ * device left the passphrase fallback with no credential to unlock.
  */
-export async function authorized<T>(
-  getApproval: () => Promise<Approval>,
-  call: (auth: Approval) => Promise<T>,
-): Promise<T> {
-  return call(await getApproval())
+const CREDENTIAL_KEY = 'kin_credentialId'
+
+export function knownCredentialId(): string | null {
+  return localStorage.getItem(CREDENTIAL_KEY)
 }
 
-export const post = <T>(path: string, body: Record<string, unknown>, auth: Approval) =>
-  api.post<T>(path, { ...body, auth })
+export function rememberCredentialId(id: string): void {
+  localStorage.setItem(CREDENTIAL_KEY, id)
+}
 
 /**
  * Why an approval didn't happen, in words.
  *
- * The authenticator throws for several reasons that all mean "not signed":
- * the person dismissed the sheet, it timed out, or a second prompt cancelled
- * the first. None of them are failures of the payment, so none should read
- * like one.
+ * The authenticator throws for several reasons that all mean "not signed": the
+ * person dismissed the sheet, it timed out, or a second prompt cancelled the
+ * first. None of them are failures of the payment, so none should read like
+ * one.
  */
 export function approvalProblem(e: unknown): string {
   const name = (e as { name?: string })?.name

@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { usePoll } from '../usePoll'
 import { api, type MemberState } from '../api'
-import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
-import { Confirm, type Pending } from '../components/Confirm'
+import { type Approval } from '../auth'
+import { useApproval } from '../useApproval'
+import { PassphraseSheet } from '../components/PassphraseSheet'
+import { TabBar, type Tab } from '../components/TabBar'
+import { Confirm } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
-import { Sheet } from '../components/Sheet'
 import { AccountButton, AccountSheet } from '../components/Account'
 import { AmountStep, WhoStep } from '../components/Pay'
-import { labelFor, looksLikeAddress, matchRecipient } from '../lib/address'
+import { labelFor, looksLikeAddress } from '../lib/address'
 import { Scan, scanningSupported } from '../components/Scan'
 import { Blob, Figure, Icon, ScreenSkeleton } from '../components/ui'
 import { base, fromBase, split, two } from '../lib/money'
 import { resetDay, when } from '../lib/time'
 
-type Tab = 'home' | 'pay' | 'activity'
+type TabId = 'home' | 'pay' | 'activity'
+
+/** Three, and never a hint that anyone else exists. */
+const tabsFor = (waiting: number): ReadonlyArray<Tab<TabId>> => [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'pay', label: 'Pay', icon: 'pay' },
+  { id: 'activity', label: 'Activity', icon: 'activity', badge: waiting },
+]
 
 /**
  * The whole app, for a kid.
@@ -28,23 +38,17 @@ type Tab = 'home' | 'pay' | 'activity'
  */
 export default function Member({ onLogout }: { onLogout: () => void }) {
   const [me, setMe] = useState<MemberState | null>(null)
-  const [tab, setTab] = useState<Tab>('home')
+  const [tab, setTab] = useState<TabId>('home')
   const [step, setStep] = useState<'who' | 'amount'>('who')
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [scan, setScan] = useState(false)
   const [account, setAccount] = useState(false)
+  const { pending, setPending, ask, passphrase } = useApproval()
   const [op, setOp] = useState<Op | null>(null)
-  const [pending, setPending] = useState<Pending | null>(null)
-  const [askPass, setAskPass] = useState<((a: Approval) => void) | null>(null)
-  const [passphrase, setPassphrase] = useState('')
 
   const load = useCallback(() => api.get<MemberState>('/api/me').then(setMe).catch(() => {}), [])
-  useEffect(() => {
-    void load()
-    const t = setInterval(load, 10_000)
-    return () => clearInterval(t)
-  }, [load])
+  usePoll(load)
 
   if (!me) {
     return (
@@ -70,7 +74,6 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const headroom = base(me.headroom)
   const perTx = base(me.limit)
   const address = to.trim()
-  const known = matchRecipient(me.recipients, address)
   const valid = looksLikeAddress(address)
   const name = labelFor(me.recipients, address)
 
@@ -148,25 +151,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
       }
     }
 
-    setPending({
-      title, fee: null, symbol: me.symbol, covered: true,
-      run: () => {
-        approve().then(run).catch((e) => {
-          // Hand off to the passphrase sheet, and drop the Face ID sheet:
-          // they stack, and Confirm sits above it.
-          if (e instanceof NeedsPassphrase) { setPending(null); setAskPass(() => run); return }
-          setPending((p) => p && { ...p, blocked: approvalProblem(e) })
-        })
-      },
-    })
-  }
-
-  const withPassphrase = () => {
-    const credentialId = knownCredentialId()
-    const run = askPass
-    const pass = passphrase
-    setAskPass(null); setPassphrase('')
-    if (credentialId && run) run({ credentialId, passphrase: pass })
+    ask({ title, fee: null, symbol: me.symbol, covered: true }, run)
   }
 
   const waiting = me.myRequests.filter((r) => r.status === 'pending').length
@@ -314,24 +299,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
         <div className="scroll"><MyWeek me={me} onAccount={() => setAccount(true)} /></div>
       )}
 
-      <nav className="tabbar" role="tablist" aria-label="Sections">
-        {([['home', 'Home', 'home'], ['pay', 'Pay', 'pay'], ['activity', 'Activity', 'activity']] as const).map(([id, text, icon]) => (
-          <button
-            key={id} role="tab" aria-selected={tab === id}
-            className={`tab tap${tab === id ? ' tab--on' : ''}`}
-            aria-label={id === 'activity' && waiting > 0
-              ? `${text}, ${waiting} waiting`
-              : text}
-            onClick={() => setTab(id)}
-          >
-            <Icon name={icon} size={19} />
-            {tab === id && <span>{text}</span>}
-            {id === 'activity' && waiting > 0 && (
-              <span className="tab__badge" aria-hidden="true">{waiting}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+      <TabBar tabs={tabsFor(waiting)} value={tab} onChange={setTab} />
 
       {scan && <Scan onCancel={() => setScan(false)} onFound={(a) => { setTo(a); setScan(false) }} />}
 
@@ -364,20 +332,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
         </p>
       </AccountSheet>
 
-      <Sheet open={Boolean(askPass)} title="Confirm it's you" onClose={() => setAskPass(null)}>
-        <p className="hint">This device can&rsquo;t use Face ID, so your passphrase approves it.</p>
-        <label className="field mt3">
-          <span>Passphrase</span>
-          <input
-            className="input" type="password" value={passphrase} autoFocus enterKeyHint="go"
-            onChange={(e) => setPassphrase(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && passphrase.length >= 8) withPassphrase() }}
-          />
-        </label>
-        <button className="btn tap mt4" disabled={passphrase.length < 8} onClick={withPassphrase}>
-          Approve
-        </button>
-      </Sheet>
+      <PassphraseSheet prompt={passphrase} />
 
       <Confirm pending={pending} onCancel={() => setPending(null)} />
       <OpModal op={op} onClose={() => setOp(null)} />

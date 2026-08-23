@@ -1,20 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePoll } from '../usePoll'
 import { api, type FeeQuote, type ParentState } from '../api'
-import { approvalProblem, approve, knownCredentialId, NeedsPassphrase, type Approval } from '../auth'
+import { type Approval } from '../auth'
+import { useApproval } from '../useApproval'
+import { PassphraseSheet } from '../components/PassphraseSheet'
+import { TabBar, type Tab } from '../components/TabBar'
 import { Sheet } from '../components/Sheet'
 import { AccountButton, AccountSheet } from '../components/Account'
-import { Confirm, type Pending } from '../components/Confirm'
+import { Confirm } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
-import { Figure, Icon, InfoButton, ScreenSkeleton } from '../components/ui'
+import { InfoButton, LiveFigure, ScreenSkeleton } from '../components/ui'
 import { figureSize, floor2, two } from '../lib/money'
 import { shortAddress } from '../lib/address'
 import { Keypad } from '../components/Pay'
-import { useAccruing } from '../useAccruing'
 import { Activity } from './Activity'
 import { PayTab } from './ParentPay'
 import { FamilyTab } from './ParentFamily'
 
-type Tab = 'home' | 'pay' | 'family' | 'activity'
+type TabId = 'home' | 'pay' | 'family' | 'activity'
+
+/** The guardian sees everything, so four. The badge counts asks waiting. */
+const tabsFor = (waiting: number): ReadonlyArray<Tab<TabId>> => [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'pay', label: 'Pay', icon: 'pay' },
+  { id: 'family', label: 'Family', icon: 'family', badge: waiting },
+  { id: 'activity', label: 'Activity', icon: 'activity' },
+]
 
 /**
  * One write, start to finish.
@@ -65,24 +76,18 @@ export type Note = keyof typeof NOTES
 
 export default function Parent({ onLogout }: { onLogout: () => void }) {
   const [st, setSt] = useState<ParentState | null>(null)
-  const [tab, setTab] = useState<Tab>('home')
+  const [tab, setTab] = useState<TabId>('home')
   const [op, setOp] = useState<Op | null>(null)
-  const [pending, setPending] = useState<Pending | null>(null)
   const [note, setNote] = useState<Note | null>(null)
   const [sheet, setSheet] = useState<'fees' | 'add' | null>(null)
-  const [askPass, setAskPass] = useState<((a: Approval) => void) | null>(null)
-  const [passphrase, setPassphrase] = useState('')
   const [toast, setToast] = useState('')
+  const { pending, setPending, ask, passphrase } = useApproval()
 
   const load = useCallback(
     () => api.get<ParentState>('/api/state').then(setSt).catch(() => {}),
     [],
   )
-  useEffect(() => {
-    void load()
-    const t = setInterval(load, 10_000)
-    return () => clearInterval(t)
-  }, [load])
+  usePoll(load)
 
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(toastTimer.current), [])
@@ -148,18 +153,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       }
     }
 
-    const start = () => {
-      approve().then(run).catch((e) => {
-        // Hand off to the passphrase sheet, and drop the Face ID sheet:
-        // they stack, and Confirm sits above it.
-        if (e instanceof NeedsPassphrase) { setPending(null); setAskPass(() => run); return }
-        // A cancelled or failed prompt: say so in the sheet rather than
-        // making it vanish with nothing to read.
-        setPending((p) => p && { ...p, blocked: approvalProblem(e) })
-      })
-    }
-
-    setPending({ title: spec.title, fee: null, symbol, run: start })
+    ask({ title: spec.title, fee: null, symbol }, run)
 
     // Nothing to price against means we genuinely don't know, and "0" would
     // be a claim rather than an absence. Every caller quotes today; this is
@@ -179,14 +173,6 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       .catch(() => setPending((p) => p && { ...p, fee: null, feeUnknown: true }))
   }, [st, load])
 
-  const withPassphrase = () => {
-    const credentialId = knownCredentialId()
-    const run = askPass
-    const pass = passphrase
-    setAskPass(null); setPassphrase('')
-    if (credentialId && run) run({ credentialId, passphrase: pass })
-  }
-
   if (!st) {
     return (
       <div className="screen">
@@ -195,7 +181,6 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     )
   }
 
-  const asks = st.pendingRequests
   const funding = st.wallet.setup.status === 'running'
 
   return (
@@ -216,34 +201,12 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       {tab === 'pay' && <PayTab st={st} act={act} />}
       {tab === 'family' && <FamilyTab st={st} act={act} onCopied={flash} reload={load} />}
 
-      <nav className="tabbar" role="tablist" aria-label="Sections">
-        {([
-          ['home', 'Home', 'home'],
-          ['pay', 'Pay', 'pay'],
-          ['family', 'Family', 'family'],
-          ['activity', 'Activity', 'activity'],
-        ] as const).map(([id, label, icon]) => (
-          <button
-            key={id} role="tab" aria-selected={tab === id}
-            className={`tab tap${tab === id ? ' tab--on' : ''}`}
-            aria-label={id === 'family' && asks.length > 0
-              ? `${label}, ${asks.length} waiting`
-              : label}
-            onClick={() => setTab(id)}
-          >
-            <Icon name={icon} size={19} />
-            {tab === id && <span>{label}</span>}
-            {id === 'family' && asks.length > 0 && (
-              <span className="tab__badge" aria-hidden="true">{asks.length}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+      <TabBar tabs={tabsFor(st.pendingRequests.length)} value={tab} onChange={setTab} />
 
       {toast && <div className="toast" role="status">{toast}</div>}
 
-      <AccountSheet
-        open={sheet === 'fees'}
+      {sheet === 'fees' && <AccountSheet
+        open
         onClose={() => setSheet(null)}
         name={st.you?.name ?? 'You'}
         role={`${st.familyName} household · you set the limits`}
@@ -260,7 +223,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           </div>
           <div className="dl__row">
             <dt>Promised in limits</dt>
-            <dd>{promised(st)} {st.symbol}</dd>
+            <dd>{two(st.promised)} {st.symbol}</dd>
           </div>
         </dl>
         <p className="hint mt3">
@@ -269,7 +232,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           else ever sees a fee. We quote a ceiling before you sign and charge what
           it actually cost.
         </p>
-      </AccountSheet>
+      </AccountSheet>}
 
       {/* Mounted only while open, so the amount starts empty every time —
           adding money closes the sheet from the outside, which never runs its
@@ -296,20 +259,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
         <button className="btn btn--quiet tap mt4" onClick={() => setNote(null)}>Got it</button>
       </Sheet>
 
-      <Sheet open={Boolean(askPass)} title="Confirm it's you" onClose={() => setAskPass(null)}>
-        <p className="hint">This device can&rsquo;t use Face ID, so your passphrase approves it.</p>
-        <label className="field mt3">
-          <span>Passphrase</span>
-          <input
-            className="input" type="password" value={passphrase} autoFocus enterKeyHint="go"
-            onChange={(e) => setPassphrase(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && passphrase.length >= 8) withPassphrase() }}
-          />
-        </label>
-        <button className="btn tap mt4" disabled={passphrase.length < 8} onClick={withPassphrase}>
-          Approve
-        </button>
-      </Sheet>
+      <PassphraseSheet prompt={passphrase} />
 
       <Confirm pending={pending} onCancel={() => setPending(null)} />
 
@@ -341,19 +291,6 @@ function apyText(apr: number): string {
   const apy = (1 + apr / 31_536_000) ** 31_536_000 - 1
   return `${(apy * 100).toFixed(apy < 0.001 ? 4 : 2)}% a year`
 }
-/**
- * Sum of the weekly limits the manager is actually approved for.
- *
- * Mirrors the server's `outstandingCaps`: a live scope, not turned off.
- * Counting revoked people would contradict the note beside it, which promises
- * the figure drops the moment someone is turned off.
- */
-function promised(st: ParentState): string {
-  return two(st.members
-    .filter((m) => m.scopeId && !m.revoked)
-    .reduce((t, m) => t + Number(m.caps?.period ?? 0), 0))
-}
-
 /* ── Home ────────────────────────────────────────────────────────────────── */
 
 function Home({
@@ -366,12 +303,7 @@ function Home({
   onCopied: (m: string) => void
   onAdd: () => void
 }) {
-  // What can actually be supplied, which is not the whole loose balance: the
-  // account keeps a few operations' worth back to pay its own fees with.
-  const addable = st.wallet.addable
 
-  // The position is earning while this is on screen, so show it earning.
-  const pot = useAccruing(st.wallet.pot, st.wallet.apr ?? 0, st.wallet.potAt ?? Date.now())
 
   const copy = async () => {
     try {
@@ -393,7 +325,11 @@ function Home({
           <InfoButton label="Where the money sits" onClick={() => onInfo('balance')} />
         </div>
         <div style={{ marginTop: 12 }}>
-          <Figure value={pot} live={(st.wallet.apr ?? 0) > 0} />
+          <LiveFigure
+            balance={st.wallet.pot}
+            apr={st.wallet.apr ?? 0}
+            readAt={st.wallet.potAt ?? Date.now()}
+          />
         </div>
         <div className="note mt3">
           {(st.wallet.apr ?? 0) > 0 && <span className="livedot" aria-hidden="true" />}
@@ -408,13 +344,13 @@ function Home({
       <div className="pair mt2">
         <div className="tile">
           <div className="tile__label">Promised out</div>
-          <div className="tile__figure">{promised(st)}</div>
+          <div className="tile__figure">{two(st.promised)}</div>
           <div className="tile__note">in weekly limits</div>
         </div>
         <div className="tile tile--pale">
           <div className="tile__label">Ready to add</div>
-          <div className="tile__figure">{two(addable)}</div>
-          {Number(addable) > 0 ? (
+          <div className="tile__figure">{two(st.wallet.addable)}</div>
+          {Number(st.wallet.addable) > 0 ? (
             <button
               className="btn btn--sm tap mt3"
               style={{ background: 'var(--ink)', color: 'var(--pale)', minHeight: 44, fontSize: 13.5 }}

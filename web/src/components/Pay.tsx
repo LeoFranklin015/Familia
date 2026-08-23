@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Icon, KindIcon } from './ui'
 import { figureSize } from '../lib/money'
-import { labelFor, looksLikeAddress, matchRecipient, sameAddress } from '../lib/address'
+import { looksLikeAddress, matchRecipient, sameAddress } from '../lib/address'
 import type { Recipient } from '../api'
 
 /**
@@ -101,7 +101,7 @@ export function Saved({
  * for the decision rather than the decision.
  */
 export function WhoStep({
-  context, value, onChange, onScan, canScan, recipients, problem, onNext, nextLabel, blocked,
+  context, value, onChange, onScan, canScan, recipients, problem, onNext, nextLabel,
 }: {
   context?: ReactNode
   value: string
@@ -112,10 +112,8 @@ export function WhoStep({
   problem?: string
   onNext: () => void
   nextLabel: string
-  /** Set when the address is real but will be refused — the hint says why. */
-  blocked?: boolean
 }) {
-  const ready = looksLikeAddress(value) && !blocked
+  const ready = looksLikeAddress(value)
   return (
     <>
       <div className="scroll"><div className="page page--action">
@@ -157,11 +155,10 @@ export function WhoStep({
  * the screen where the number is the point.
  */
 export function AmountStep({
-  to, subtitle, onBack, value, onChange, symbol, tone = 'normal', under, action, onMax,
+  to, onBack, value, onChange, symbol, tone = 'normal', under, action, onMax,
 }: {
   /** Who is being paid, already resolved to a name where there is one. */
   to: string
-  subtitle?: string
   onBack: () => void
   value: string
   onChange: (v: string) => void
@@ -182,7 +179,7 @@ export function AmountStep({
             <Icon name="back" size={20} />
           </button>
           <div className="step-head__body">
-            <div className="step-head__to">{subtitle ?? 'To'}</div>
+            <div className="step-head__to">To</div>
             <div className="step-head__who">{to}</div>
           </div>
         </div>
