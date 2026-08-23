@@ -133,17 +133,34 @@ export function normalize(f: Family): Family {
 }
 
 // ----------------------------------------------------------------- backend
-const uri = process.env.MONGODB_URI
+// The env file is loaded here as well as in chain.ts. Both are idempotent,
+// and without it the choice below depends on which module ESM happens to
+// evaluate first — which is how this silently fell back to files with a
+// perfectly good connection string sitting in .env.
+try {
+  process.loadEnvFile(new URL('../../.env', import.meta.url).pathname)
+} catch { /* fine when the vars are exported directly */ }
 
-export const store: Backend = uri
-  ? mongoBackend(uri, process.env.MONGODB_DB || 'kin')
-  : fileBackend()
+let backend: Backend | null = null
+
+/** Chosen on first use, not at import: module evaluation order is not a good
+ *  thing to make configuration depend on. */
+function chosen(): Backend {
+  if (!backend) {
+    const uri = process.env.MONGODB_URI?.trim()
+    backend = uri
+      ? mongoBackend(uri, process.env.MONGODB_DB?.trim() || 'kin')
+      : fileBackend()
+  }
+  return backend
+}
 
 /** Called once at boot, so a bad connection string fails there and not
  *  halfway through someone's first payment. */
 export async function openStore(): Promise<string> {
-  await store.ready()
-  return store.describe()
+  const b = chosen()
+  await b.ready()
+  return b.describe()
 }
 
 // -------------------------------------------------------------- households
@@ -165,20 +182,20 @@ export async function createFamily(
     recipients: STARTER_RECIPIENTS.map((r) => ({ ...r })),
     allowOnly: false,
   }
-  await store.putFamily(family)
+  await chosen().putFamily(family)
   return { family, parentJoinToken: token }
 }
 
-export const getFamily = (id: string) => store.getFamily(id)
+export const getFamily = (id: string) => chosen().getFamily(id)
 
 export async function mustFamily(id: string): Promise<Family> {
-  const f = await store.getFamily(id)
+  const f = await chosen().getFamily(id)
   if (!f) throw new Error('That family no longer exists.')
   return f
 }
 
-export const saveFamily = (f: Family) => store.putFamily(f)
-export const listFamilies = () => store.listFamilies()
+export const saveFamily = (f: Family) => chosen().putFamily(f)
+export const listFamilies = () => chosen().listFamilies()
 
 /**
  * Apply a change to a household atomically.
@@ -191,15 +208,15 @@ export const listFamilies = () => store.listFamilies()
  * retried if someone else got there first.
  */
 export const updateFamily = (id: string, mutate: (f: Family) => void) =>
-  store.updateFamily(id, mutate)
+  chosen().updateFamily(id, mutate)
 
 /** Find the household holding an unused invite token. */
 export async function findInvite(
   token: string,
 ): Promise<{ family: Family; invite: Family['invites'][number] } | null> {
-  const familyId = await store.findInviteFamilyId(token)
+  const familyId = await chosen().findInviteFamilyId(token)
   if (!familyId) return null
-  const family = await store.getFamily(familyId)
+  const family = await chosen().getFamily(familyId)
   const invite = family?.invites.find((i) => i.token === token && !i.usedBy)
   return family && invite ? { family, invite } : null
 }
@@ -213,15 +230,14 @@ export async function newInvite(family: Family, name: string): Promise<string> {
 }
 
 export async function record(familyId: string, entry: Omit<Activity, 'id' | 'at'>): Promise<void> {
-  await updateFamily(familyId, (f) => {
-    f.activity.unshift({ ...entry, id: randomBytes(8).toString('hex'), at: Date.now() })
-    f.activity = f.activity.slice(0, 100)
+  await chosen().appendActivity(familyId, {
+    ...entry, id: randomBytes(8).toString('hex'), at: Date.now(),
   })
 }
 
 // ----------------------------------------------------------------- vaults
-export const putVault = (v: Vault) => store.putVault(v)
-export const getVault = (credentialId: string) => store.getVault(credentialId)
+export const putVault = (v: Vault) => chosen().putVault(v)
+export const getVault = (credentialId: string) => chosen().getVault(credentialId)
 
 // --------------------------------------------------------------- sessions
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000 // identity only; grants no spending
@@ -232,22 +248,32 @@ export async function createSession(v: Omit<Session, 'id' | 'expiresAt'>): Promi
     id: randomBytes(24).toString('hex'),
     expiresAt: Date.now() + SESSION_TTL_MS,
   }
-  await store.putSession(session)
+  await chosen().putSession(session)
   return session
 }
 
+/** How stale an expiry has to be before a read bothers to slide it. Without
+ *  this, every request on every poll writes to the database. */
+const SLIDE_AFTER_MS = 5 * 60 * 1000
+
 export async function getSession(id: string | undefined): Promise<Session | undefined> {
   if (!id) return undefined
-  const s = await store.getSession(id)
+  const s = await chosen().getSession(id)
   if (!s) return undefined
-  if (Date.now() > s.expiresAt) { await store.deleteSession(id); return undefined }
-  // Sliding expiry, written back so it survives a restart. Not awaited: a
-  // read should not wait on bookkeeping.
-  s.expiresAt = Date.now() + SESSION_TTL_MS
-  void store.putSession(s).catch(() => {})
+  if (Date.now() > s.expiresAt) { await chosen().deleteSession(id); return undefined }
+
+  // Sliding expiry, written back so it survives a restart. Not awaited, since
+  // a read should not wait on bookkeeping — which is exactly why it goes
+  // through `touchSession`: an upsert landing after a sign-out would bring the
+  // session back.
+  const next = Date.now() + SESSION_TTL_MS
+  if (next - s.expiresAt > SLIDE_AFTER_MS) {
+    s.expiresAt = next
+    void chosen().touchSession(id, next).catch(() => {})
+  }
   return s
 }
 
-export const destroySession = (id: string) => store.deleteSession(id)
+export const destroySession = (id: string) => chosen().deleteSession(id)
 
-setInterval(() => { void store.sweepSessions(Date.now()).catch(() => {}) }, 60_000).unref()
+setInterval(() => { void chosen().sweepSessions(Date.now()).catch(() => {}) }, 60_000).unref()

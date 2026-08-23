@@ -21,6 +21,11 @@ export type Backend = {
   /** Atomic read-modify-write. `mutate` must be synchronous and pure enough
    *  to run more than once — it is retried if someone else got there first. */
   updateFamily(id: string, mutate: (family: Family) => void): Promise<Family>
+  /** Append one activity entry and keep the newest hundred. Separate from
+   *  `updateFamily` because it is a pure append: the database can do it in
+   *  one atomic operation that never contends, and it is by far the most
+   *  frequent write here. */
+  appendActivity(familyId: string, entry: Family['activity'][number]): Promise<void>
   listFamilies(): Promise<Family[]>
   findInviteFamilyId(token: string): Promise<string | null>
 
@@ -29,6 +34,10 @@ export type Backend = {
 
   getSession(id: string): Promise<Session | null>
   putSession(session: Session): Promise<void>
+  /** Slide an existing session's expiry. Must not create one: this runs
+   *  un-awaited on reads, and an upsert here resurrects a session that was
+   *  signed out a moment earlier. */
+  touchSession(id: string, expiresAt: number): Promise<void>
   deleteSession(id: string): Promise<void>
   sweepSessions(now: number): Promise<void>
 }

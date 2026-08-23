@@ -14,7 +14,7 @@ import { normalize, type Family, type Session, type Vault } from '../store.js'
 import { Contended, type Backend } from './backend.js'
 
 /** How many times an update will re-read and re-apply before giving up. */
-const RETRIES = 6
+const RETRIES = 12
 
 type FamilyDoc = Family & { _id: string; rev: number }
 type VaultDoc = Vault & { _id: string }
@@ -93,8 +93,30 @@ export function mongoBackend(uri: string, dbName: string): Backend {
           { $set: { ...family, _id: id, rev: rev + 1 } },
         )
         if (res.matchedCount === 1) return family
+        // Someone else wrote first. Backing off with jitter matters: retrying
+        // immediately means the same set of writers collide again on the very
+        // next tick.
+        const wait = Math.min(2 ** attempt, 40) + Math.random() * 25
+        await new Promise((r) => { setTimeout(r, wait) })
       }
       throw new Contended()
+    },
+
+    /**
+     * One atomic operator, so concurrent writers never fight over it.
+     *
+     * `$position: 0` puts the newest first and `$slice: 100` trims the tail in
+     * the same operation, which is exactly what the read-modify-write version
+     * was doing by hand and losing races over.
+     */
+    async appendActivity(familyId, entry) {
+      await families.updateOne(
+        { _id: familyId },
+        {
+          $push: { activity: { $each: [entry], $position: 0, $slice: 100 } },
+          $inc: { rev: 1 },
+        },
+      )
     },
 
     async listFamilies() {
@@ -132,6 +154,11 @@ export function mongoBackend(uri: string, dbName: string): Backend {
         { $set: { ...session, _id: session.id } },
         { upsert: true },
       )
+    },
+
+    /** No upsert, deliberately: see the interface. */
+    async touchSession(id, expiresAt) {
+      await sessions.updateOne({ _id: id }, { $set: { expiresAt } })
     },
 
     async deleteSession(id) {

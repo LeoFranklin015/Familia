@@ -65,6 +65,14 @@ export function fileBackend(): Backend {
       return family
     },
 
+    async appendActivity(familyId, entry) {
+      const family = get(familyId)
+      if (!family) return
+      family.activity.unshift(entry)
+      family.activity = family.activity.slice(0, 100)
+      writeAtomic(familyPath(familyId), family)
+    },
+
     async listFamilies() {
       if (!existsSync(FAMILIES)) return []
       return readdirSync(FAMILIES)
@@ -94,6 +102,14 @@ export function fileBackend(): Backend {
     async putSession(session) {
       const all = readSessions().filter((s) => s.id !== session.id)
       all.push(session)
+      writeSessions(all)
+    },
+
+    async touchSession(id, expiresAt) {
+      const all = readSessions()
+      const s = all.find((x) => x.id === id)
+      if (!s) return
+      s.expiresAt = expiresAt
       writeSessions(all)
     },
 
