@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, whenSessionEnds, type Whoami } from './api'
+import { setSignedInAs } from './auth'
 import { Device } from './components/Device'
 import { ScreenSkeleton } from './components/ui'
 import Join from './screens/Join'
@@ -12,14 +13,23 @@ export default function App() {
   const joinToken = location.pathname.startsWith('/join/') ? location.pathname.split('/')[2] : null
 
   useEffect(() => {
-    api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null }))
+    void refresh()
     // A session can end under the app — it expires, or the server restarts.
     // Returning to sign-in is the honest response; reporting the action the
     // person was mid-way through as "refused" is not.
-    whenSessionEnds(() => setWho({ role: null }))
+    whenSessionEnds(() => { setSignedInAs(null); setWho({ role: null }) })
   }, [])
 
-  const refresh = () => api.get<Whoami>('/api/whoami').then(setWho).catch(() => setWho({ role: null }))
+  /**
+   * Who the cookie says this is.
+   *
+   * The credential goes to `auth` as well as to render, so every payment
+   * prompt is scoped to the account actually signed in rather than to whichever
+   * one this browser remembered most recently.
+   */
+  const refresh = () => api.get<Whoami>('/api/whoami')
+    .then((w) => { setSignedInAs(w.credentialId ?? null); setWho(w) })
+    .catch(() => { setSignedInAs(null); setWho({ role: null }) })
 
   return <Device>{inside()}</Device>
 

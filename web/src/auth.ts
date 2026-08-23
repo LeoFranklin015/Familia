@@ -26,9 +26,28 @@ export class NeedsPassphrase extends Error {
  * one saved tap is a lot of saved taps.
  */
 export async function approve(): Promise<Approval> {
-  const pk = await unlockPasskey(knownCredentialId())
+  const pk = await unlockPasskey(signedInAs ?? knownCredentialId())
   if (!pk) throw new NeedsPassphrase()
   return { credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex }
+}
+
+/**
+ * The credential the current session belongs to.
+ *
+ * The cookie is what decides who is signed in, not this browser's list of
+ * remembered accounts: a household can have several, and the most recently
+ * remembered is not necessarily the one holding the session. Scoping a payment
+ * prompt to the wrong credential would only fall back to the account picker,
+ * which is not broken but is exactly the friction naming the credential is
+ * meant to remove.
+ *
+ * Held in memory, not storage. It describes this tab's session and should not
+ * outlive it.
+ */
+let signedInAs: string | null = null
+
+export function setSignedInAs(credentialId: string | null): void {
+  signedInAs = credentialId
 }
 
 /**

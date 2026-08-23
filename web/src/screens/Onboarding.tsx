@@ -72,13 +72,18 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
     finally { setBusy(false) }
   }
 
-  const signInFaceId = async () => {
+  /**
+   * Sign in with a passkey.
+   *
+   * Given a credential, the platform goes straight to Face ID; without one it
+   * offers its own picker, which is the right thing on a browser that has
+   * never been here. Either way the tap that chose the account is the tap that
+   * prompts, so nobody selects a name and then presses a second button.
+   */
+  const signInFaceId = async (credentialId?: string) => {
     setErr(''); setBusy(true)
     try {
-      // Unscoped on purpose: the authenticator offers whichever passkeys this
-      // device holds for the site, which is the right picker to show someone
-      // who is signing in rather than approving a payment.
-      const pk = await unlockPasskey()
+      const pk = await unlockPasskey(credentialId)
       if (!pk) throw new Error('This device could not use a passkey. Try your passphrase.')
       const r = await api.post<Identity>('/api/session', {
         credentialId: pk.credentialId, prfKeyHex: pk.prfKeyHex,
@@ -240,7 +245,15 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
                     <button
                       className="row__pick tap"
                       aria-pressed={picked?.credentialId === a.credentialId}
-                      onClick={() => { setErr(''); setPicked(a); setUsePassphrase(!a.prf) }}
+                      disabled={busy}
+                      onClick={() => {
+                        setErr(''); setPicked(a); setUsePassphrase(!a.prf)
+                        // A passkey can be asked for right here: this click is
+                        // the user gesture WebAuthn needs, and the credential
+                        // is known, so the prompt is Face ID and not a picker.
+                        // A passphrase cannot, because it has to be typed.
+                        if (a.prf) void signInFaceId(a.credentialId)
+                      }}
                     >
                       <Check on={picked?.credentialId === a.credentialId} />
                       <span className="avatar avatar--sm">{a.name[0]?.toUpperCase() ?? '?'}</span>
@@ -301,7 +314,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
               faceId="Sign in with Face ID"
               confirm="Sign in"
               working="Opening…"
-              onFaceId={signInFaceId}
+              onFaceId={() => signInFaceId(picked?.prf ? picked.credentialId : undefined)}
               onSubmit={signInPassphrase}
               blocked={!picked && !/^0x[0-9a-fA-F]{40}$/.test(address.trim())}
 
