@@ -75,19 +75,31 @@ export function Blob({ size, top, left, right, bottom, rotate = -18, opacity = 0
 }
 
 /**
- * The mark: money held inside a boundary.
+ * The mark: two grown-ups and a child, hands joined.
  *
- * Drawn rather than lettered — it has to survive being 18px in a tab and
- * 40px on a splash, and a wordmark does neither.
+ * The same idea as the splash illustration, reduced until it survives being
+ * 18px in a tab. `currentColor` on the adults so it takes the surface it sits
+ * on; the child stays pale, which is what keeps three shapes from reading as a
+ * bar chart at small sizes.
  */
 export function Mark({ size = 44 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 44 44" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="38" height="38" rx="13" stroke="currentColor" strokeWidth="2.4" opacity="0.3" />
-      <circle cx="22" cy="22" r="8.5" fill="currentColor" />
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g fill="currentColor">
+        <circle cx="15" cy="17" r="6" />
+        <path d="M7.5 53 V32 a7.5 7.5 0 0 1 15 0 v21 z" />
+        <circle cx="49" cy="17" r="6" />
+        <path d="M41.5 53 V32 a7.5 7.5 0 0 1 15 0 v21 z" />
+      </g>
+      <path d="M21 36 H43" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" />
+      <g fill="var(--pale)">
+        <circle cx="32" cy="30" r="4.6" />
+        <path d="M26.6 53 V41 a5.4 5.4 0 0 1 10.8 0 v12 z" />
+      </g>
     </svg>
   )
 }
+
 
 /* ── Icons ─────────────────────────────────────────────────────────────────
    One weight, one grid, filled — so they sit against type rather than
