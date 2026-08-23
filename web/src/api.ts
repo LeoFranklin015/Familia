@@ -119,6 +119,39 @@ export type ParentState = {
   /** The household address book. Names against addresses, and nothing more:
    *  an entry permits nothing until it is on someone's list. */
   recipients: Recipient[]
+  /** What the household could sign up to. */
+  services: Service[]
+  /** What it already has, live from the contract. */
+  subscriptions: Subscription[]
+}
+
+/** Something the household can subscribe to, at a fixed monthly price. */
+export type Service = {
+  id: string
+  name: string
+  price: string
+  payTo: string
+}
+
+/**
+ * A running mandate.
+ *
+ * `dueNow` and `renewsAt` are read off the contract rather than counted here.
+ * Once a month has been taken the scope has nothing left in the period, so the
+ * contract itself is what says whether another charge would clear.
+ */
+export type Subscription = {
+  id: string
+  serviceId: string
+  name: string
+  payTo: string
+  price: string
+  scopeId: string | null
+  revoked: boolean
+  startedAt: number
+  charges: Array<{ at: number; amount: string; txHash: string }>
+  dueNow: boolean
+  renewsAt: number
 }
 
 export type FeeQuote = {

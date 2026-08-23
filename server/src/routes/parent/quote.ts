@@ -8,7 +8,11 @@ import { AAVE, canPayFeesInUsdt, formatUnits, parseUnits, planDeposit, planGuard
 import { bodyOf } from '../../authorize.js'
 import { parentOf, refuseParent } from '../guard.js'
 import type { Family } from '../../store.js'
-import { allowlistPlan, grantPlan, revokePlan, settlePlan, type Limits } from './plans.js'
+import { serviceById } from '../../subscriptions.js'
+import {
+  allowlistPlan, cancelSubscriptionPlan, grantPlan, revokePlan, settlePlan,
+  subscribePlan, type Limits,
+} from './plans.js'
 
 export const quoteRoutes = new Hono()
 
@@ -81,6 +85,19 @@ async function batchFor(family: Family, address: string, body: Record<string, un
         throw new Error('Give them a limit first, then choose where it can go.')
       }
       return allowlistPlan(family, m, Boolean(body.only), (body.allowed as string[]) ?? []).txs
+    }
+    case 'subscribe': {
+      const service = serviceById(String(body.serviceId ?? ''))
+      if (!service) throw new Error('unknown service')
+      if (family.subscriptions.some((s) => s.serviceId === service.id && !s.revoked)) {
+        throw new Error(`${service.name} is already running.`)
+      }
+      return subscribePlan(family, address, service)
+    }
+    case 'unsubscribe': {
+      const sub = family.subscriptions.find((s) => s.id === body.subscriptionId && !s.revoked)
+      if (!sub) throw new Error('That subscription is not running.')
+      return cancelSubscriptionPlan(family, sub)
     }
     case 'settle': {
       const req = family.requests.find((r) => r.requestId === body.requestId)

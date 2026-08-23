@@ -10,11 +10,13 @@ import { moneyRoutes } from './parent/money.js'
 import { quoteRoutes } from './parent/quote.js'
 import { recipientRoutes } from './parent/recipients.js'
 import { stateRoutes } from './parent/state.js'
+import { subscriptionRoutes } from './parent/subscriptions.js'
 
 export const parentRoutes = new Hono()
 
 parentRoutes.route('/', moneyRoutes)
 parentRoutes.route('/', limitRoutes)
 parentRoutes.route('/', recipientRoutes)
+parentRoutes.route('/', subscriptionRoutes)
 parentRoutes.route('/', quoteRoutes)
 parentRoutes.route('/', stateRoutes)

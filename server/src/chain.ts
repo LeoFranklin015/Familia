@@ -22,6 +22,7 @@ export {
   USDT_PAYMASTER,
   formatUnits,
   parseUnits,
+  provider,
 } from './chain/config.js'
 export {
   aAssetRead,

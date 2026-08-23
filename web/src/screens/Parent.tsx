@@ -14,16 +14,18 @@ import { two } from '../lib/money'
 import { Activity } from './Activity'
 import { Home } from './parent/Home'
 import { AddMoneySheet } from './parent/AddMoneySheet'
+import { SubsTab } from './parent/Subs'
 import { PayTab } from './ParentPay'
 import { FamilyTab } from './ParentFamily'
 
-type TabId = 'home' | 'pay' | 'family' | 'activity'
+type TabId = 'home' | 'pay' | 'family' | 'subs' | 'activity'
 
-/** The guardian sees everything, so four. The badge counts asks waiting. */
+/** The guardian sees everything. The badge counts asks waiting. */
 const tabsFor = (waiting: number): ReadonlyArray<Tab<TabId>> => [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'pay', label: 'Pay', icon: 'pay' },
   { id: 'family', label: 'Family', icon: 'family', badge: waiting },
+  { id: 'subs', label: 'Plans', icon: 'repeat' },
   { id: 'activity', label: 'Activity', icon: 'activity' },
 ]
 
@@ -199,6 +201,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       )}
       {tab === 'pay' && <PayTab st={st} act={act} />}
       {tab === 'family' && <FamilyTab st={st} act={act} onCopied={flash} reload={load} />}
+      {tab === 'subs' && <SubsTab st={st} act={act} reload={load} />}
 
       <TabBar tabs={tabsFor(st.pendingRequests.length)} value={tab} onChange={setTab} />
 

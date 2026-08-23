@@ -5,6 +5,7 @@ import {
   managerRead, spentInCurrentPeriod, supplyApr,
 } from '../../chain.js'
 import { bootstrapStatus } from '../../bootstrap.js'
+import { SERVICES, serviceById } from '../../subscriptions.js'
 import { parentOf, refuseParent } from '../guard.js'
 import { outstandingCaps } from './plans.js'
 import { hasExpired } from './money.js'
@@ -18,12 +19,13 @@ stateRoutes.get('/api/state', async (c) => {
 
   // One wave. The member scope reads do not depend on any wallet value, and
   // running them after it cost a whole round trip on every ten-second poll.
-  const [pool, addable, paysInUsdt, apr, members] = await Promise.all([
+  const [pool, addable, paysInUsdt, apr, members, subscriptions] = await Promise.all([
     aAssetRead.balanceOf(session.address) as Promise<bigint>,
     depositableAmount(session.address),
     canPayFeesInUsdt(session.address),
     supplyApr(),
     Promise.all(family.members.map(readMember)),
+    Promise.all(family.subscriptions.map(readSubscription)),
   ])
 
   return c.json({
@@ -58,8 +60,47 @@ stateRoutes.get('/api/state', async (c) => {
         memberName: family.members.find((m) => m.id === r.memberId)?.name ?? '?',
       })),
     recipients: family.recipients,
+    // What the household could sign up to, and what it already has.
+    services: SERVICES,
+    subscriptions,
   })
 })
+
+/**
+ * One mandate, joined to its service and read back off the contract.
+ *
+ * `dueNow` is the contract's answer, not ours: `spendable` is zero for the rest
+ * of the period once a month has been taken, and zero forever once the mandate
+ * is revoked.
+ */
+async function readSubscription(s: import('../../store.js').Subscription) {
+  const service = serviceById(s.serviceId)
+  let dueNow = false
+  let renewsAt = 0
+
+  if (s.scopeId && !s.revoked) {
+    const [spendable, resets] = await Promise.all([
+      managerRead.spendable(s.scopeId) as Promise<bigint>,
+      managerRead.periodResetsAt(s.scopeId) as Promise<bigint>,
+    ])
+    dueNow = spendable > 0n
+    renewsAt = Number(resets)
+  }
+
+  return {
+    id: s.id,
+    serviceId: s.serviceId,
+    name: service?.name ?? s.serviceId,
+    payTo: service?.payTo ?? '',
+    price: s.price,
+    scopeId: s.scopeId ?? null,
+    revoked: Boolean(s.revoked),
+    startedAt: s.startedAt,
+    charges: s.charges,
+    dueNow,
+    renewsAt,
+  }
+}
 
 /** One member's live position, read from the contract. */
 async function readMember(m: import('../../store.js').Member) {

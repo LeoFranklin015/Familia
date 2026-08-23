@@ -99,6 +99,24 @@ export type Recipient = {
   kind: 'SHOP' | 'PERSON'
 }
 
+/**
+ * A recurring mandate: one scope, granted to a biller instead of a person.
+ *
+ * The price is stored here because the caps on-chain are what it was when the
+ * mandate was signed. A service raising its price cannot widen an existing
+ * scope; it needs a new one, which the household has to agree to.
+ */
+export type Subscription = {
+  id: string
+  serviceId: string
+  scopeId?: string
+  /** Monthly price, fixed at the moment the mandate was granted. */
+  price: string
+  revoked?: boolean
+  startedAt: number
+  charges: Array<{ at: number; amount: string; txHash: string }>
+}
+
 export type Family = {
   id: string
   name: string
@@ -115,6 +133,8 @@ export type Family = {
    * through a *person's* allowlist, never on its own.
    */
   recipients: Recipient[]
+  /** Recurring mandates the household has signed. */
+  subscriptions: Subscription[]
   /** @deprecated Household-wide enforcement, replaced by the per-member list.
    *  Read once at migration and then left alone. */
   allowOnly?: boolean
@@ -148,6 +168,7 @@ export function normalize(f: Family): Family {
   f.requests ??= []
   f.activity ??= []
   f.recipients ??= STARTER_RECIPIENTS.map((r) => ({ ...r }))
+  f.subscriptions ??= []
 
   // Households written while the list was household-wide: give every member
   // the list the household had, which is what they were actually being held
@@ -209,6 +230,7 @@ export async function createFamily(
     requests: [],
     activity: [],
     recipients: STARTER_RECIPIENTS.map((r) => ({ ...r })),
+    subscriptions: [],
     allowOnly: false,
   }
   await chosen().putFamily(family)

@@ -12,7 +12,8 @@ import {
   AAVE, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch, erc20, MANAGER,
   managerIface, parseUnits, predictScopeId, type Tx,
 } from '../../chain.js'
-import type { Family, Member } from '../../store.js'
+import { billerAddress, MONTH_SECONDS, type Service } from '../../subscriptions.js'
+import type { Family, Member, Subscription } from '../../store.js'
 
 /** A week, in seconds. The default period a limit runs over. */
 const WEEK_DAYS = 7
@@ -21,15 +22,24 @@ const WEEK_DAYS = 7
  * Sum of the period caps of every active scope — the bounded allowance the
  * manager is trusted with. Never `type(uint256).max`.
  *
- * `replacing` excludes one member, for the case where their old scope is
- * revoked in the same operation that grants the new one: counting both would
- * inflate the approval by a cap that is about to stop existing.
+ * Subscriptions count here exactly as people do. They are scopes on the same
+ * contract drawing on the same position, so leaving them out would size the
+ * approval below what the billers are entitled to pull, and a collection would
+ * revert on the allowance rather than on any rule the household set.
+ *
+ * `replacing` drops one scope by id, member or subscription, for the case where
+ * an old one is revoked in the same operation that grants its replacement:
+ * counting both inflates the approval by a cap that is about to stop existing.
  */
 export function outstandingCaps(family: Family, extra = 0n, replacing?: string): bigint {
   let total = extra
   for (const m of family.members) {
     if (m.id === replacing) continue
     if (m.scopeId && !m.revoked && m.caps) total += parseUnits(m.caps.period)
+  }
+  for (const s of family.subscriptions) {
+    if (s.id === replacing) continue
+    if (s.scopeId && !s.revoked) total += parseUnits(s.price)
   }
   return total
 }
@@ -95,6 +105,44 @@ export async function grantPlan(
 export function revokePlan(family: Family, member: Member): Tx[] {
   if (!member.scopeId) throw new Error('member has no allowance')
   return buildRevokeBatch(member.scopeId, outstandingCaps(family, 0n, member.id))
+}
+
+/**
+ * Sign up to a service.
+ *
+ * The mandate is a scope like any other, with three differences that are the
+ * whole security story:
+ *
+ * `perTxCap` and `periodCap` are both one month's price, so the biller can take
+ * the price once per period and a second attempt is refused on-chain. The
+ * allowlist pins the destination to the service's payout address, so the biller
+ * cannot redirect the money to itself. And the household can revoke it without
+ * asking anyone, which is the part no card mandate gives you.
+ */
+export async function subscribePlan(
+  family: Family,
+  funder: string,
+  service: Service,
+): Promise<Tx[]> {
+  const price = parseUnits(service.price)
+  const scopeId = await predictScopeId(funder, billerAddress())
+  return [
+    ...buildGrantBatch({
+      spender: billerAddress(),
+      perTxCap: price,
+      periodCap: price,
+      periodLength: BigInt(MONTH_SECONDS),
+      expiry: 0n,
+      newAllowanceTotal: outstandingCaps(family, price),
+    }),
+    ...buildAllowlistBatch([scopeId], { allow: [service.payTo] }),
+  ]
+}
+
+/** Cancel one, and hand back the allowance it was holding. */
+export function cancelSubscriptionPlan(family: Family, sub: Subscription): Tx[] {
+  if (!sub.scopeId) throw new Error('that subscription was never granted')
+  return buildRevokeBatch(sub.scopeId, outstandingCaps(family, 0n, sub.id))
 }
 
 type AllowlistChange = {
