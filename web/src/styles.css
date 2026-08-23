@@ -1301,3 +1301,34 @@ a:hover { color: #fff; }
   font-size: 15px;
   font-weight: 700;
 }
+
+/* The mandate, as a quantity. Full means a whole period is still theirs to
+   take; empty means they have had it and the contract will refuse the rest. */
+.mandate { margin-top: 13px; }
+.mandate__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.mandate__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+.mandate__ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.subs__more {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+}
+@media (prefers-reduced-motion: reduce) { .mandate__fill { transition: none; } }

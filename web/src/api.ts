@@ -150,8 +150,12 @@ export type Subscription = {
   revoked: boolean
   startedAt: number
   charges: Array<{ at: number; amount: string; txHash: string }>
+  /** What the contract would still let the biller take this period. */
+  left: string
   dueNow: boolean
   renewsAt: number
+  /** How long a period runs, so the screen can say it rather than assume it. */
+  periodDays: number
 }
 
 export type FeeQuote = {

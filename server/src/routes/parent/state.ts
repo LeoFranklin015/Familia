@@ -5,7 +5,7 @@ import {
   managerRead, spentInCurrentPeriod, supplyApr,
 } from '../../chain.js'
 import { bootstrapStatus } from '../../bootstrap.js'
-import { SERVICES, serviceById } from '../../subscriptions.js'
+import { MONTH_SECONDS, SERVICES, serviceById } from '../../subscriptions.js'
 import { parentOf, refuseParent } from '../guard.js'
 import { outstandingCaps } from './plans.js'
 import { hasExpired } from './money.js'
@@ -75,7 +75,7 @@ stateRoutes.get('/api/state', async (c) => {
  */
 async function readSubscription(s: import('../../store.js').Subscription) {
   const service = serviceById(s.serviceId)
-  let dueNow = false
+  let left = '0'
   let renewsAt = 0
 
   if (s.scopeId && !s.revoked) {
@@ -83,7 +83,7 @@ async function readSubscription(s: import('../../store.js').Subscription) {
       managerRead.spendable(s.scopeId) as Promise<bigint>,
       managerRead.periodResetsAt(s.scopeId) as Promise<bigint>,
     ])
-    dueNow = spendable > 0n
+    left = formatUnits(spendable)
     renewsAt = Number(resets)
   }
 
@@ -97,8 +97,13 @@ async function readSubscription(s: import('../../store.js').Subscription) {
     revoked: Boolean(s.revoked),
     startedAt: s.startedAt,
     charges: s.charges,
-    dueNow,
+    // What the contract would still let this biller take before the period
+    // rolls. `spendable` also folds in the position and the approval, so it is
+    // the honest ceiling rather than the cap minus what we recorded.
+    left,
+    dueNow: Number(left) > 0,
     renewsAt,
+    periodDays: Math.round(MONTH_SECONDS / 86400),
   }
 }
 
