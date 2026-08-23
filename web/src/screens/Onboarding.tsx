@@ -4,6 +4,7 @@ import { knownCredentialId, rememberCredentialId } from '../auth'
 import { createPasskey, unlockPasskey } from '../webauthn'
 import { KeyChoice } from '../components/KeyChoice'
 import { Icon } from '../components/ui'
+import family from '../assets/family.svg'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
@@ -96,26 +97,15 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
         <div className="screen__pad">
           <div className="kicker">Familia</div>
 
-          {/* The household at the middle, and the money going round it. Three
-              rings at different radii and speeds, each carrying one thing the
-              house pays for. The family is what stays still. */}
+          {/* The household at the middle, the money going round it. Three
+              orbits at different radii and periods, so the coins never settle
+              into a pattern. The family is the thing that stays still. */}
           <div className="orbit" aria-hidden="true">
             <div className="orbit__glow" />
-            <div className="orbit__path orbit__path--1" />
-            <div className="orbit__path orbit__path--2" />
-            <div className="orbit__path orbit__path--3" />
-
-            <div className="orbit__core">
-              <Icon name="family" size={40} />
-            </div>
-
-            {[
-              { ring: 1, label: '20' },
-              { ring: 2, label: '15.49' },
-              { ring: 3, label: '8' },
-            ].map((c) => (
-              <div key={c.ring} className={`orbit__arm orbit__arm--${c.ring}`}>
-                <span className="orbit__coin">{c.label}</span>
+            <img className="orbit__family" src={family} alt="" />
+            {[1, 2, 3].map((n) => (
+              <div key={n} className={`orbit__arm orbit__arm--${n}`}>
+                <span className={`blob orbit__coin orbit__coin--${n}`} />
               </div>
             ))}
           </div>
@@ -123,10 +113,9 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
           <div className="spacer" />
 
           <h1 className="display">One wallet the whole house runs on.</h1>
-          <p className="lede mt3" style={{ marginBottom: 22 }}>
-            Pocket money, the shopping and the monthly bills, out of one balance
-            that earns while it sits. You set what each person and each service
-            can take, and those limits are held by a contract, not by us.
+          <p className="lede" style={{ marginTop: 14, marginBottom: 22, lineHeight: 1.55 }}>
+            Pocket money, the shopping and the bills, out of one balance that
+            earns while it sits. Every limit is held by a contract, not by us.
           </p>
 
           <button className="btn tap" onClick={() => go('names')}>Get started</button>

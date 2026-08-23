@@ -1334,50 +1334,37 @@ a:hover { color: #fff; }
 @media (prefers-reduced-motion: reduce) { .mandate__fill { transition: none; } }
 
 /* ── the welcome orbit ─────────────────────────────────────────────────────
-   The household in the middle, the money going round it. Three rings at
-   different radii and periods so the coins never line up into a pattern, and
-   each coin counter-rotates so its figure stays upright.
+   The household in the middle, the money going round it. No drawn rings: the
+   arms carrying the coins are zero-width and invisible, so the motion is the
+   only thing describing the path.
 
-   Sized in em off the container's font-size, so one line changes the whole
-   diagram and it scales with the phone rather than being pinned to pixels. */
+   Sized in em off the container, so one line rescales the whole diagram and it
+   follows the phone rather than being pinned to pixels. */
 .orbit {
   position: relative;
-  font-size: 15px;
-  width: 15.5em;
-  height: 15.5em;
-  margin: 1.2em auto 0;
+  font-size: 17px;
+  width: 18em;
+  height: 18em;
+  margin: 0.4em auto 0;
   display: grid;
   place-items: center;
 }
 .orbit__glow {
   position: absolute;
-  inset: 22%;
+  inset: 12%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(95 211 163 / 0.20), transparent 68%);
+  background: radial-gradient(circle, rgb(95 211 163 / 0.13), transparent 70%);
 }
-.orbit__core {
+/* Kept well inside the smallest orbit, so a coin passes around the family
+   rather than across it. */
+.orbit__family {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 5.2em;
-  height: 5.2em;
-  border-radius: 50%;
-  background: var(--pale);
-  color: var(--ink);
+  width: 54%;
+  height: auto;
 }
 
-/* The rings themselves. Faint, and only there to make the motion legible. */
-.orbit__path {
-  position: absolute;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-}
-.orbit__path--1 { inset: 27%; }
-.orbit__path--2 { inset: 13%; }
-.orbit__path--3 { inset: 0; }
-
-/* An arm is a full-width bar pinned through the centre; the coin sits at its
-   top end, so rotating the arm carries the coin around the ring. */
+/* An arm is a zero-width bar pinned through the centre, with the coin at its
+   far end: rotating the arm carries the coin around. The arm draws nothing. */
 .orbit__arm {
   position: absolute;
   top: 0;
@@ -1387,53 +1374,32 @@ a:hover { color: #fff; }
   transform-origin: bottom center;
   animation: orbit-spin linear infinite;
 }
-.orbit__arm--1 { height: 23%; animation-duration: 11s; animation-delay: -2s; }
-.orbit__arm--2 { height: 37%; animation-duration: 17s; animation-delay: -9s; }
-.orbit__arm--3 { height: 50%; animation-duration: 24s; animation-delay: -5s; }
+/* Radii start beyond the figure's half-width and stay inside the screen's
+   padding at the far end. */
+.orbit__arm--1 { height: 40%; animation-duration: 13s; animation-delay: -3s; }
+.orbit__arm--2 { height: 46%; animation-duration: 19s; animation-delay: -11s; }
+.orbit__arm--3 { height: 52%; animation-duration: 27s; animation-delay: -6s; }
 
+/* The same coin already used behind the other screens, put in motion. */
 .orbit__coin {
-  position: absolute;
   top: 0;
   left: 50%;
-  display: grid;
-  place-items: center;
-  min-width: 2.9em;
-  height: 2.05em;
-  padding: 0 0.5em;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--ink);
-  font-size: 0.72em;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  /* Centre it on the arm's end, then undo the arm's rotation so the figure
-     stays the right way up all the way round. */
   transform: translate(-50%, -50%);
-  animation: orbit-upright linear infinite;
-  animation-duration: inherit;
-  animation-delay: inherit;
+  opacity: 0.82;
 }
-.orbit__arm--1 .orbit__coin { animation-duration: 11s; animation-delay: -2s; }
-.orbit__arm--2 .orbit__coin { animation-duration: 17s; animation-delay: -9s; }
-.orbit__arm--3 .orbit__coin { animation-duration: 24s; animation-delay: -5s; }
+.orbit__coin--1 { width: 1.25em; height: 1.25em; }
+.orbit__coin--2 { width: 1.9em; height: 1.9em; }
+.orbit__coin--3 { width: 1.5em; height: 1.5em; }
 
 @keyframes orbit-spin {
   to { transform: rotate(360deg); }
 }
-@keyframes orbit-upright {
-  to { transform: translate(-50%, -50%) rotate(-360deg); }
-}
 
-/* Motion is the whole point here, so with it turned off the diagram holds its
-   arrangement rather than collapsing: the coins stay where their delays put
-   them. */
+/* With motion off the coins hold the places their delays would have put them,
+   rather than collapsing into a stack at twelve o'clock. */
 @media (prefers-reduced-motion: reduce) {
-  .orbit__arm, .orbit__coin { animation: none; }
-  .orbit__arm--1 { transform: rotate(58deg); }
-  .orbit__arm--2 { transform: rotate(196deg); }
-  .orbit__arm--3 { transform: rotate(302deg); }
-  .orbit__arm--1 .orbit__coin { transform: translate(-50%, -50%) rotate(-58deg); }
-  .orbit__arm--2 .orbit__coin { transform: translate(-50%, -50%) rotate(-196deg); }
-  .orbit__arm--3 .orbit__coin { transform: translate(-50%, -50%) rotate(-302deg); }
+  .orbit__arm { animation: none; }
+  .orbit__arm--1 { transform: rotate(56deg); }
+  .orbit__arm--2 { transform: rotate(198deg); }
+  .orbit__arm--3 { transform: rotate(303deg); }
 }
