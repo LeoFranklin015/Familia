@@ -125,6 +125,7 @@ const scopeId = manager.interface.parseLog(
   granted.logs.find((l) => l.address.toLowerCase() === MANAGER.toLowerCase()),
 ).args.id
 ok(`scope ${scopeId.slice(0, 18)}…`)
+info(`grant  ${granted.hash}`)
 info(`capped at ${ethers.formatUnits(PRICE, 6)} per charge and per month`)
 info(`term ${TERM_MONTHS} months, expiring ${new Date(expiry * 1000).toDateString()}`)
 
@@ -134,8 +135,10 @@ ok(`allowlisted to ${PAY_TO.slice(0, 10)}… and nothing else`)
 step('1. The biller collects this month')
 const asBiller = manager.connect(biller)
 const before = await bal(usdt, PAY_TO)
-await settled(await (await asBiller.spend(scopeId, PAY_TO, PRICE)).wait())
+const collected = await (await asBiller.spend(scopeId, PAY_TO, PRICE)).wait()
+await settled(collected)
 const after = await bal(usdt, PAY_TO)
+info(`collect ${collected.hash}`)
 ok(`the service was paid: ${before} → ${after} USDT`)
 info(`the household's position is now ${await bal(ausdt, funder.address)} aUSDT`)
 
@@ -162,8 +165,10 @@ if (charges !== TERM_MONTHS) throw new Error(`term is ${charges} charges, expect
 info(`most it can ever take: ${ethers.formatUnits(PRICE * BigInt(charges), 6)} USDT`)
 
 step('5. The household cancels early')
-await settled(await (await manager.revoke(scopeId)).wait())
+const revoked = await (await manager.revoke(scopeId)).wait()
+await settled(revoked)
 ok('revoked')
+info(`revoke ${revoked.hash}`)
 await mustRevert('collecting after cancellation', () => asBiller.spend.staticCall(scopeId, PAY_TO, PRICE), 'Revoked()')
 
 console.log('\n\x1b[32mAll five hold.\x1b[0m The cap, the destination, the term and the')

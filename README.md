@@ -1,40 +1,59 @@
 # Kin
 
-A family allowance wallet. One pot of USD₮ that kids spend from directly, inside
-limits the parent sets on-chain. Nobody holds a native token or sees a seed
-phrase.
+One wallet for everything a household pays for. The kids' pocket money, the
+shopping, and the monthly bills, out of a single pot of USD₮ that earns while it
+sits. Every limit is a contract, not a setting. Nobody holds a native token or
+sees a seed phrase.
 
 Tether WDK Track 2 (gasless), on Base Sepolia.
 
 ## The idea
 
-Giving a kid money means choosing between cash, which you cannot see or limit,
-and a card, which shows you the damage a day late. Neither lets you say "20 a
-week, 5 at a time, and only at these shops" and have it actually hold.
+Household money is spread across things that do not talk to each other. Cash for
+the kids, which you cannot see or limit. A card, which shows you the damage a day
+late. Direct debits you set up once and forget, which keep taking until you
+remember to phone someone.
 
-Kin keeps the household money in one pot that earns while it sits, and gives each
-kid a spending scope. The limit is not a rule in the app. It is a contract, and
-the app cannot lie about it.
+Three problems, one shape: **somebody spends, and you want a bound on it.**
 
-## How it works
+Kin keeps the money in one place and hands out bounded permissions against it. A
+kid gets 20 a week, 5 at a time, at these shops. Netflix gets 15.49 a month, for
+a year, to its own address and nowhere else. Both are the same object on the same
+contract, and neither can be widened by the app, by us, or by whoever holds the
+permission.
 
-- **The pot** is the parent's own USD₮ supplied to Aave V3. They keep custody and
-  it earns while idle.
-- **A scope** per kid: per-purchase cap, weekly cap, optional expiry, optional
-  list of addresses they may pay. One grant, enforced on-chain.
-- **Joining** is a link. The kid taps it, does Face ID once, and has a working
-  account. No install, no funding step, no seed phrase.
-- **Paying** redeems out of the parent's Aave position and lands on the merchant
-  **in the same transaction**.
-- **Over the cap, or off the list**, the payment becomes a request the parent
-  approves from their phone. Revoking is instant and on-chain.
-- **Gas** is paid by the parent in USD₮, through a paymaster in this repo. Kids
-  pay nothing, because a child should not need a balance to spend an allowance.
+## What the household does with it
+
+**Pocket money.** Each kid gets a scope: a per-purchase cap, a weekly cap, an
+optional expiry, and an optional list of addresses they may pay. Joining is a
+link. The kid taps it, does Face ID once, and has a working account. No install,
+no funding step, no seed phrase. Paying redeems out of the parent's Aave position
+and lands on the shop **in the same transaction**. Over the cap or off the list,
+it becomes a request the parent approves from their phone.
+
+**The household's own payments.** The parent pays anyone straight from the pot,
+which is a withdrawal from Aave to the recipient in one call. No scope involved:
+they are the owner, not a spender.
+
+**Subscriptions.** Netflix, Spotify and the rest are mandates, granted to a
+biller instead of a person. Capped at one month's price per period, allowlisted
+to the service's own payout address, and expiring after twelve charges, so the
+mandate runs out on its own even if nobody cancels. Cancelling is a revoke, and
+it takes effect immediately without asking the service first.
+
+**The money earns the whole time.** It sits in Aave V3 as the parent's own
+`aUSDT`, and is redeemed only at the moment something is paid.
+
+**Nobody touches a native token.** The parent pays their own gas in USD₮ through
+a paymaster in this repo. Kids pay nothing at all, because a child should not
+need a balance to spend an allowance. Billers pay their own way, in their own
+ETH, so a household is never charged for being collected from.
 
 ## Demo
 
-Five beats, live on Base Sepolia. `./server/e2e-demo.sh` runs them headlessly and
-prints every hash.
+Live on Base Sepolia. `./server/e2e-demo.sh` runs the allowance beats headlessly
+and prints every hash; `node server/verify/subscription.mjs` does the same for a
+mandate.
 
 | # | What happens | Receipt |
 |---|---|---|
@@ -43,6 +62,7 @@ prints every hash.
 | 3 | Kid spends 8 USD₮, redeemed straight to the merchant, no gas | [one kid-signed op](https://sepolia.basescan.org/tx/0x7d5d535fe2c65576af68f72efe0f8149d22399664c4ad3d169e710f091e80fea) |
 | 4 | Kid tries 200, over the cap, so it becomes a request | [the ask](https://sepolia.basescan.org/tx/0xfe6a28b9e9e6aa948629b49bbb67aea2bc91cd033717d663712443a3da1e13ea), [the approval](https://sepolia.basescan.org/tx/0x61376e392b95f3d7ad15ec01e7515e0c1ff2d442cf2b4e91518911bd293349d8) |
 | 5 | Parent revokes, next attempt refused by the contract | [the revoke](https://sepolia.basescan.org/tx/0x879df2af6f0b964c22939f23ad93d7e75ac1e9985a4c1d00e976d546042b899c) |
+| 6 | Netflix is granted a mandate, collects once, and is then refused | [the mandate](https://sepolia.basescan.org/tx/0x8a0c267716eb8006ede94967c02ebdc593e20f76c51b894b525be72a5e6c6364), [the collection](https://sepolia.basescan.org/tx/0xc068e223dac75d695d6ecfb4dab2a710a0da4c9123f5bce1bcfa77a94a1806cd), [the cancellation](https://sepolia.basescan.org/tx/0x028bebd269bb0c2a5eb2b9fd1ab3577e0794a59464999025120855d68d84c102) |
 
 Force beat 5 rather than trusting it: `POST /api/spend` with `{"force": true}`
 skips every check in this app, so what comes back is the contract's own
@@ -79,8 +99,49 @@ The manager holds tokens inside a single `spend` call and never across one.
 **The kid signs their own operation.** `sender` is the kid's account. The
 contract authorises, not the wallet.
 
-**Approvals stay bounded.** The manager's allowance is the sum of outstanding
-weekly caps, recomputed on every grant and revoke. Never `type(uint256).max`.
+**Approvals stay bounded.** The manager's allowance is the sum of every live
+scope's period cap, kids and billers together, recomputed on every grant and
+revoke. Never `type(uint256).max`.
+
+## Subscriptions are the same object
+
+A mandate needed no new contract, and no new mechanism. It is a scope with a
+biller as the `spender` instead of a kid:
+
+```
+grant(biller, USD₮, aUSDT, perTx = 15.49, period = 15.49, every = 30 days,
+      expiry = now + 360 days)
+setAllowlist(scopeId, [netflixPayout], true)
+```
+
+Four bounds, all of them the contract's:
+
+- **Once a period.** `perTxCap` and `periodCap` are both one month's price, so a
+  second collection inside the same month is refused with `OverPeriodCap`.
+- **One destination.** The allowlist pins where the money can land, so the biller
+  cannot redirect it to itself.
+- **A term.** Twelve periods, then `Expired`. 360 days rather than 365 is
+  deliberate: a year would leave a five-day sliver of a thirteenth period.
+- **Cancellable.** A revoke takes effect immediately, and nobody has to be asked.
+
+Collecting is not the household's transaction. The biller sends it from its own
+account and pays its own gas in ETH, which is what a real merchant does. No
+signature is taken from the parent, because permission was already given when the
+scope was granted; what stands between the biller and the money is the contract.
+
+`node server/verify/subscription.mjs` proves all four against the deployed
+manager, using a throwaway biller so it touches no household:
+
+```
+1. collect              the service is paid, the position drops
+2. collect again        refused, OverPeriodCap
+3. pay itself/stranger  refused, RecipientNotAllowed
+4. the term             periods 0 to 11, so 12 charges and never a 13th
+5. revoke, collect      refused, Revoked
+```
+
+The demo drives collection from a button so it does not have to wait a month. In
+the real thing a scheduler calls the same route.
 
 ## Where WDK is used
 
@@ -94,6 +155,11 @@ weekly caps, recomputed on every grant and revoke. Never `type(uint256).max`.
 | `getUserOperationReceipt` polling | `server/src/wdk.ts` | Receipt-first waiting (note 2) |
 | `wdk-secret-manager` | `server/src/vault.ts` | Encrypts wallet entropy at rest, keyed by the WebAuthn PRF output |
 | `registerPolicy` | `server/src/wdk.ts` | Locally refuses a kid anything not targeting the manager. Defence in depth; the engine keeps no counters, so the contract is the enforcement |
+
+One path deliberately does not go through WDK: a biller collecting a
+subscription (`server/src/subscriptions.ts`) signs a plain transaction from its
+own key and pays its own gas. It is not the household's account and should not
+borrow the household's wallet.
 
 `@tetherto/wdk` 1.0.0-beta.16 · `wdk-wallet-evm-7702-gasless` 1.0.0-beta.4 ·
 `wdk-secret-manager` 1.0.0-beta.3.
@@ -117,9 +183,12 @@ Aave addresses come from `@bgd-labs/aave-address-book` on both the JS and
 Solidity side. No hex is pasted anywhere, including from here.
 
 `ScopedSpendManager` knows nothing about families. Its vocabulary is
-`funder`/`spender` and `asset`/`source`, so team budgets and agent spend caps are
-the same object. When `source == asset` it settles as a plain ERC-20 pull, so the
-app also works with no savings position at all.
+`funder`/`spender` and `asset`/`source`, so team budgets, agent spend caps and
+subscription mandates are the same object. That is not a claim about what it
+could do: the subscriptions in this app are that generality being used, on the
+deployed contract, with no changes made to support them. When `source == asset`
+it settles as a plain ERC-20 pull, so the app also works with no savings position
+at all.
 
 28 Foundry tests: 19 on the manager, covering every named revert by name, both
 settlement paths, weekly roll-over and `spendable()`; 9 on the paymaster.
@@ -258,14 +327,14 @@ Five things that cost real time and are in no doc.
 ## Layout
 
 ```
-contracts/   ScopedSpendManager, the allowance rules
+contracts/   ScopedSpendManager, the spending rules for kids and billers alike
 paymaster/   UsdtPaymaster, gas paid in USD₮
 server/      the API, the WDK integration, the ERC-7677 service
 web/         the phone app
 ```
 
-Two contracts, two problems: one bounds what a kid may spend, the other lets an
-account pay for its own transaction without a native coin. Each directory carries
+Two contracts, two problems: one bounds what a spender may take, the other lets
+an account pay for its own transaction without a native coin. Each directory carries
 the scripts that prove its own claims, under `verify/`.
 
 ## Run it
@@ -300,6 +369,7 @@ node server/verify/sponsored-op.mjs           # sponsored op from an empty EOA
 node server/verify/aave-roundtrip.mjs         # gasless Aave deposit and withdraw
 node server/verify/aave-reserves.mjs          # the supply-cap evidence above
 node server/verify/decode-spend.mjs <tx>      # decode a payment's settlement
+node server/verify/subscription.mjs           # a mandate: charge, refuse, expire, cancel
 node paymaster/verify/why-not-sepolia.mjs     # why Sepolia's USD₮ is unusable
 node paymaster/verify/pay-gas-in-usdt.mjs     # gas in USD₮, no native coin held
 node paymaster/verify/decode-fee.mjs <tx>     # decode who paid for an operation
@@ -325,6 +395,8 @@ every WDK integration in this repo is new.
 
 ## Non-goals
 
-Multi-chain, recurring billing, cross-chain anything, custodial backends,
-recovery beyond the encrypted-blob restore, general-purpose SDKs. One chain, one
-protocol, two screens, five beats.
+Multi-chain, cross-chain anything, custodial backends, recovery beyond the
+encrypted-blob restore, general-purpose SDKs, and a real biller network. The
+services here are a fixed catalogue with test payout addresses, and collection is
+triggered by hand rather than by a scheduler. One chain, one protocol, two
+screens.
