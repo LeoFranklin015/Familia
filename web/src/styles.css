@@ -728,3 +728,36 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
   font-size: 1.6rem; font-weight: 700; letter-spacing: -0.028em;
 }
 .tile__figure span { font-size: 0.82rem; font-weight: 650; color: var(--ink-2); margin-left: 5px; }
+
+/* Activity marks — a wallet reads by shape before it reads by word. */
+.dot {
+  width: 9px; height: 9px; flex: none; border-radius: 50%;
+  background: var(--ink-3); margin: 0 var(--s1);
+}
+.dot--deposit, .dot--approved { background: var(--accent); }
+.dot--payment { background: var(--ink-2); }
+.dot--ask { background: var(--warn); }
+.dot--revoke, .dot--denied { background: var(--danger); }
+.dot--allowance { background: var(--accent-ink); }
+
+.link--sm { font-size: 0.8rem; min-height: auto; padding: 0; text-decoration: none; }
+.link--block { display: block; width: 100%; text-align: center; text-decoration: none; color: var(--ink-2); font-weight: 600; }
+.link--block:active { color: var(--ink); }
+
+.tile .hint { margin-top: 2px; }
+
+/* The address, where a wallet keeps it: under the balance, shortened, and one
+   tap from the clipboard. */
+.addr {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s4); padding: 7px var(--s3);
+  border-radius: var(--r-pill);
+  background: rgb(244 246 244 / 0.09);
+  border: 1px solid rgb(244 246 244 / 0.12);
+  color: rgb(244 246 244 / 0.75);
+  cursor: pointer; font-size: 0.78rem;
+  transition: background-color 0.18s ease;
+}
+.addr:active { background: rgb(244 246 244 / 0.16); }
+.addr svg { width: 15px; height: 15px; flex: none; }
+.addr .mono { color: inherit; font-size: 0.78rem; }

@@ -96,7 +96,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
     <div className="app app--tabbed">
       <TopBar who={st.familyName} onLogout={onLogout} />
 
-      {tab === 'home' && <Home st={st} act={act} onInfo={setNote} />}
+      {tab === 'home' && <Home st={st} act={act} onInfo={setNote} onSeeAll={() => setTab('activity')} />}
       {tab === 'family' && <Family st={st} act={act} onInfo={setNote} />}
       {tab === 'activity' && <Activity st={st} />}
 
@@ -172,53 +172,92 @@ function Fee({ quote, symbol }: { quote: FeeQuote | null; symbol: string }) {
   )
 }
 
-function Home({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }) {
+function Home({ st, act, onInfo, onSeeAll }: { st: ParentState; act: Act; onInfo: OnInfo; onSeeAll: () => void }) {
   const [adding, setAdding] = useState(false)
+  const [details, setDetails] = useState(false)
   const [amount, setAmount] = useState('')
+  const [copied, setCopied] = useState(false)
+  const hasSpare = Number(st.wallet.loose) > 0
+
+  const copyAddress = () => {
+    navigator.clipboard?.writeText(st.wallet.address)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
   const quote = useFeeQuote(adding && Number(amount) > 0 ? { action: 'deposit', amount } : null)
   const committed = st.members.filter((m) => !m.revoked && m.caps).reduce((s, m) => s + Number(m.caps!.period), 0)
 
   return (
     <>
-      {/* Earning, and spent from. The one number this screen is about. */}
+      {/* A wallet's home is the balance and what just happened to it.
+          Nothing else earns a place here. */}
       <section className="panel" aria-label="Family balance">
         <div className="panel__label">
           Family balance
           <button className="info" onClick={() => onInfo('balance')} aria-label="Where the money sits">i</button>
         </div>
         <div className="panel__figure num">{st.wallet.pot}<span>{st.symbol}</span></div>
-        <div className="panel__note">Earning in Aave · in your own account</div>
+        <button className="addr" onClick={copyAddress} aria-label="Copy your account address">
+          <span className="mono">{st.wallet.address.slice(0, 6)}…{st.wallet.address.slice(-4)}</span>
+          {copied ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.5" /><path d="M15 5.5H6.5A1.5 1.5 0 0 0 5 7v8.5" /></svg>
+          )}
+        </button>
+        <div className="panel__note">Earning in Aave · held in your own account</div>
       </section>
 
-      {/* A different thing, so a different section: money in the account that
-          is not yet earning, and the only place a deposit can come from. */}
-      <div className="section"><h2>Available to add</h2></div>
-      <div className="tile">
-        <div className="tile__figure num">{st.wallet.loose}<span>{st.symbol}</span></div>
-        <button className="btn btn--primary" onClick={() => { setAmount(''); setAdding(true) }}
-          disabled={Number(st.wallet.loose) === 0}>
-          Add money
-        </button>
-      </div>
+      {hasSpare ? (
+        <div className="tile">
+          <div>
+            <div className="tile__figure num">{st.wallet.loose}<span>{st.symbol}</span></div>
+            <div className="hint">ready to add</div>
+          </div>
+          <button className="btn btn--primary" onClick={() => { setAmount(''); setAdding(true) }}>Add money</button>
+        </div>
+      ) : (
+        <p className="hint mt4">Nothing left to add — the test faucet tops up once a day.</p>
+      )}
 
       <div className="section">
-        <h2>Allowances</h2>
-        <button className="info" onClick={() => onInfo('committed')} aria-label="Committed to the family">i</button>
+        <h2>Recent</h2>
+        {st.activity.length > 3 && <button className="link link--sm" onClick={onSeeAll}>See all</button>}
       </div>
-      <dl className="dl">
-        <div className="dl__row"><dt>Promised each week</dt><dd className="num">{committed} {st.symbol}</dd></div>
-        <div className="dl__row"><dt>People spending</dt><dd className="num">{st.members.filter((m) => m.scopeId && !m.revoked).length}</dd></div>
-      </dl>
 
-      <div className="section">
-        <h2>Account</h2>
-        <button className="info" onClick={() => onInfo('fees')} aria-label="Who pays for what">i</button>
-      </div>
-      <dl className="dl">
-        <div className="dl__row"><dt>You pay fees in</dt><dd>{st.wallet.feeMode === 'usdt' ? st.symbol : 'sponsored'}</dd></div>
-        <div className="dl__row"><dt>Family spends</dt><dd>free</dd></div>
-        <div className="dl__row"><dt>Address</dt><dd className="mono">{st.wallet.address.slice(0, 6)}…{st.wallet.address.slice(-4)}</dd></div>
-      </dl>
+      {st.activity.length === 0 ? (
+        <p className="hint">Money you add, limits you set and payments the family makes all show up here.</p>
+      ) : (
+        <div className="list">
+          {st.activity.slice(0, 3).map((a) => (
+            <div className="list__item" key={a.id} style={{ cursor: 'default' }}>
+              <div className={`dot dot--${a.kind}`} aria-hidden="true" />
+              <div className="list__body">
+                <div className="list__title">{a.text}</div>
+                <div className="list__sub">
+                  {new Date(a.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Everything technical lives behind one quiet link, not on the screen. */}
+      <button className="link link--block mt4" onClick={() => setDetails(true)}>Account &amp; fees</button>
+
+      <Sheet open={details} title="Account & fees" onClose={() => setDetails(false)}>
+        <dl className="dl">
+          <div className="dl__row"><dt>You pay fees in</dt><dd>{st.wallet.feeMode === 'usdt' ? st.symbol : 'sponsored'}</dd></div>
+          <div className="dl__row"><dt>Everyone else pays</dt><dd>nothing</dd></div>
+          <div className="dl__row"><dt>Promised in allowances</dt><dd className="num">{committed} {st.symbol}</dd></div>
+        </dl>
+        <p className="hint mt4">
+          You pay your own network fees in {st.symbol} — never ETH. Everyone you invite is
+          sponsored and needs no balance of any kind.
+        </p>
+        <button className="btn btn--primary btn--block mt4" onClick={() => setDetails(false)}>Done</button>
+      </Sheet>
 
       <Sheet open={adding} title="Add money" onClose={() => setAdding(false)}>
         <div className="amount">
@@ -407,6 +446,7 @@ function Activity({ st }: { st: ParentState }) {
     <div className="list mt4">
       {st.activity.map((a) => (
         <div className="list__item" key={a.id} style={{ cursor: 'default' }}>
+          <div className={`dot dot--${a.kind}`} aria-hidden="true" />
           <div className="list__body">
             <div className="list__title">{a.text}</div>
             <div className="list__sub">

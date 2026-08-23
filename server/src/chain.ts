@@ -35,7 +35,9 @@ export const AAVE = {
   // read inside the transaction and never cached.
   A_ASSET: AaveV3BaseSepolia.ASSETS.USDT.A_TOKEN as string,
   DECIMALS: 6,
-  SYMBOL: 'USD₮',
+  // Plain ticker: ₮ (U+20AE) is outside the UI font's subset and would
+  // render in a fallback face beside every figure.
+  SYMBOL: 'USDT',
 }
 
 export const MANAGER = requireEnv('SCOPED_SPEND_MANAGER_ADDRESS')
