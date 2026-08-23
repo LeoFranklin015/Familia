@@ -77,6 +77,10 @@ export type ParentState = {
     /** How much of `loose` may actually be supplied — the rest is the fee
      *  headroom this account keeps to pay its own way. */
     addable: string
+    /** Aave's supply rate, as a fraction per year. */
+    apr: number
+    /** When `pot` was read, so the interface can carry it forward. */
+    potAt: number
     feeMode: 'usdt' | 'sponsored'
     paymaster: string | null
     /** Onboarding funding: happens once, in the background, at sign-up. */

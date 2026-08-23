@@ -9,23 +9,34 @@ import type { ReactNode } from 'react'
  * throughout, so digits don't shift as the figure changes.
  */
 export function Figure({
-  value, unit, size = 'xl',
+  value, unit, size = 'xl', live = false,
 }: {
   value: string
   /** Shown small and low, after the tail. Omit inside a card that already
    *  names the currency. */
   unit?: string
   size?: 'xl' | 'md'
+  /** Keep every trailing digit and mark the tail as moving. Used where the
+   *  figure is carried forward between reads, so the last digits change
+   *  several times a second. */
+  live?: boolean
 }) {
-  const { big, cents, tail } = split(value)
+  const { big, cents, tail } = live ? splitLive(value) : split(value)
   return (
     <div className={`figure${size === 'md' ? ' figure--md' : ''}`}>
       <span className="figure__big">{big}</span>
       <span className="figure__cents">{cents}</span>
-      {tail && <span className="figure__tail">{tail}</span>}
+      {tail && <span className={`figure__tail${live ? ' figure__tail--live' : ''}`}>{tail}</span>}
       {unit && <span className="figure__unit">{unit}</span>}
     </div>
   )
+}
+
+/** Like `split`, but keeps trailing zeros: a digit that vanishes when it
+ *  reaches zero makes the figure jitter in width. */
+export function splitLive(value: string): { big: string; cents: string; tail: string } {
+  const [w = '0', d = ''] = value.split('.')
+  return { big: w, cents: `.${d.slice(0, 2).padEnd(2, '0')}`, tail: d.slice(2) }
 }
 
 /** `499.999999` → `499` · `.99` · `9999`. */

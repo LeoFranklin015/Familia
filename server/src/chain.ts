@@ -121,6 +121,28 @@ export const erc20 = new ethers.Interface([
 export const faucetIface = new ethers.Interface([
   'function mint(address token, address to, uint256 amount) returns (uint256)',
 ])
+/** Aave's own view of the reserve. Only the supply rate is wanted. */
+export const poolRead = new ethers.Contract(AaveV3BaseSepolia.POOL, [
+  'function getReserveData(address) view returns (tuple(uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))',
+], provider)
+
+/**
+ * The supply rate, as a plain fraction per year.
+ *
+ * Aave stores it in ray (1e27) as a simple annual rate, and grows a balance by
+ * `1 + rate * elapsed / year` — linear, not compounded. Handing the interface
+ * the same number lets it project between reads with the contract's own
+ * arithmetic instead of inventing a curve.
+ */
+export async function supplyApr(): Promise<number> {
+  try {
+    const d = await poolRead.getReserveData(AAVE.ASSET)
+    return Number(d.currentLiquidityRate) / 1e27
+  } catch {
+    return 0 // no rate is better than a made-up one: the figure just sits still
+  }
+}
+
 export const poolIface = new ethers.Interface([
   'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
   'function withdraw(address asset, uint256 amount, address to) returns (uint256)',

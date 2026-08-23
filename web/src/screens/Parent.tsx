@@ -7,6 +7,7 @@ import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { figureSize, Figure, floor2, Icon, InfoButton, ScreenSkeleton, shortAddress, two } from '../components/ui'
 import { Keypad } from '../components/Pay'
+import { useAccruing } from '../useAccruing'
 import { Activity } from './Activity'
 import { PayTab } from './ParentPay'
 import { FamilyTab } from './ParentFamily'
@@ -328,6 +329,17 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
 }
 
 /**
+ * Aave's rate, said the way a rate is said.
+ *
+ * Compounded per second, because that is what a supplier actually receives —
+ * though at testnet rates the difference from the simple figure is invisible.
+ */
+function apyText(apr: number): string {
+  if (apr <= 0) return 'nothing yet'
+  const apy = (1 + apr / 31_536_000) ** 31_536_000 - 1
+  return `${(apy * 100).toFixed(apy < 0.001 ? 4 : 2)}% a year`
+}
+/**
  * Sum of the weekly limits the manager is actually approved for.
  *
  * Mirrors the server's `outstandingCaps`: a live scope, not turned off.
@@ -356,6 +368,9 @@ function Home({
   // account keeps a few operations' worth back to pay its own fees with.
   const addable = st.wallet.addable
 
+  // The position is earning while this is on screen, so show it earning.
+  const pot = useAccruing(st.wallet.pot, st.wallet.apr ?? 0, st.wallet.potAt ?? Date.now())
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(st.wallet.address)
@@ -376,9 +391,11 @@ function Home({
           <InfoButton label="Where the money sits" onClick={() => onInfo('balance')} />
         </div>
         <div style={{ marginTop: 12 }}>
-          <Figure value={st.wallet.pot} />
+          <Figure value={pot} live={(st.wallet.apr ?? 0) > 0} />
         </div>
-        <div className="note mt3">{st.symbol} · earning in Aave</div>
+        <div className="note mt3">
+          {st.symbol} · earning {apyText(st.wallet.apr ?? 0)} in Aave
+        </div>
         <button className="chip tap mt4" onClick={copy} aria-label="Copy your account address">
           <span className="chip__addr">{shortAddress(st.wallet.address)}</span>
           <span className="chip__do">copy</span>

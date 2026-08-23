@@ -9,7 +9,7 @@ import {
   AAVE, aAssetRead, assetRead, buildAllowlistBatch, buildGrantBatch, buildRevokeBatch,
   canPayFeesInUsdt, erc20, eventArgFromLogs, feeChargedFromLogs, formatUnits,
   managerIface, managerRead, MANAGER, parseUnits, planDeposit, planGuardianPay,
-  poolIface, predictScopeId, spentInCurrentPeriod, USDT_PAYMASTER, depositableAmount, type Tx,
+  poolIface, predictScopeId, spentInCurrentPeriod, supplyApr, USDT_PAYMASTER, depositableAmount, type Tx,
 } from '../chain.js'
 import { mustFamily, record, updateFamily, type Family, type Member } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
@@ -580,11 +580,12 @@ parentRoutes.get('/api/state', async (c) => {
   if (!ctx) return refuse(c)
   const { s, family } = ctx
 
-  const [pool, loose, addable, paysInUsdt] = await Promise.all([
+  const [pool, loose, addable, paysInUsdt, apr] = await Promise.all([
     aAssetRead.balanceOf(s.address) as Promise<bigint>,
     assetRead.balanceOf(s.address) as Promise<bigint>,
     depositableAmount(s.address),
     canPayFeesInUsdt(s.address),
+    supplyApr(),
   ])
 
   const members = await Promise.all(family.members.map(async (m) => {
