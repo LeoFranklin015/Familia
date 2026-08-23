@@ -472,6 +472,6 @@ export function humanizeManagerRevert(err: unknown): string | null {
 
 function requireEnv(name: string): string {
   const v = process.env[name]
-  if (!v) throw new Error(`Missing env var ${name} — copy .env.example and fill it in.`)
+  if (!v) throw new Error(`Missing env var ${name}. Copy .env.example and fill it in.`)
   return v
 }

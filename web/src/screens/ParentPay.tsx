@@ -82,7 +82,7 @@ export function PayTab({ st, act }: { st: ParentState; act: Act }) {
           symbol={st.symbol}
           tone={overBalance ? 'over' : 'normal'}
           under={overBalance
-            ? `More than the ${floor2(st.wallet.pot)} balance — Aave will refuse it.`
+            ? `More than the ${floor2(st.wallet.pot)} balance, so Aave will refuse it.`
             : `Household balance · ${floor2(st.wallet.pot)} ${st.symbol}`}
           onMax={balance > 0 ? () => setAmount(floor2(st.wallet.pot)) : undefined}
           action={

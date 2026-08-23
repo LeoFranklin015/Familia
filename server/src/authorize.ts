@@ -41,13 +41,13 @@ export async function actAs<T>(
   fn: (account: GaslessAccount, vault: Vault) => Promise<T>,
 ): Promise<T> {
   const session = currentSession(c)
-  if (!session) throw new AuthError('Your session has ended — sign in again.')
+  if (!session) throw new AuthError('Your session has ended. Sign in again.')
   if (opts.role && session.role !== opts.role) throw new AuthError(`${opts.role} only`, 403)
 
   const body = (await c.req.json().catch(() => ({}))) as AuthPayload
   const auth = body.auth
   if (!auth || (!auth.prfKeyHex && !auth.passphrase)) {
-    throw new AuthError('This needs your approval — confirm with Face ID.')
+    throw new AuthError('This needs your approval. Confirm with Face ID.')
   }
 
   const credentialId = auth.credentialId ?? session.credentialId
@@ -63,7 +63,7 @@ export async function actAs<T>(
   try {
     mnemonic = await openVaultEntry(vault, auth)
   } catch {
-    throw new AuthError("That didn't unlock your account — try again.")
+    throw new AuthError("That didn't unlock your account. Try again.")
   }
 
   return withAccount(mnemonic, { memberGuard: vault.role === 'member', payFeesInUsdt: opts.payFeesInUsdt }, (a) => fn(a, vault))

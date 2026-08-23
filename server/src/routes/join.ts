@@ -95,7 +95,7 @@ joinRoutes.post('/api/session', async (c) => {
   try {
     await openVaultEntry(vault, body)
   } catch {
-    return c.json({ error: 'Could not unlock — wrong key or passphrase.' }, 401)
+    return c.json({ error: 'Could not unlock. Wrong key or passphrase.' }, 401)
   }
 
   const family = getFamily(vault.familyId)

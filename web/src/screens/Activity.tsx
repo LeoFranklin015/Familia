@@ -82,6 +82,6 @@ export function when(at: number): string {
 
 /** "Sunday", for a period that resets. */
 export function resetDay(at: number): string {
-  if (!at) return '—'
+  if (!at) return 'Not set'
   return new Date(at * 1000).toLocaleDateString(undefined, { weekday: 'long' })
 }

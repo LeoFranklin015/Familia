@@ -195,7 +195,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
                 <div className="spacer" />
                 {!webauthnAvailable() && (
                   <p className="hint" style={{ marginBottom: 10 }}>
-                    This browser has no Face ID — use a passphrase.
+                    This browser has no Face ID. Use a passphrase instead.
                   </p>
                 )}
                 <button className="btn tap" onClick={createWithFaceId} disabled={busy}>

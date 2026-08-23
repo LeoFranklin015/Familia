@@ -83,12 +83,12 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   /** Why this won't go through as typed. One line, never a wall. */
   const problem = !address ? undefined
     : !valid ? "That doesn't look like an address yet."
-    : offList ? 'Not on the list at home — the contract will refuse this one.'
+    : offList ? 'Not on the list at home, so the contract will refuse this one.'
     : undefined
 
   const hint = offList ? 'Whoever set this up has to add this address first.'
-    : overPerTx ? `Over your ${two(me.limit)} limit — this goes home to say yes to.`
-    : overWeek && value > 0 ? 'More than you have left this week — a parent can wave it through.'
+    : overPerTx ? `Over your ${two(me.limit)} limit, so this goes home to say yes to.`
+    : overWeek && value > 0 ? 'More than you have left this week. A parent can wave it through.'
     : shortAtHome ? "There isn't enough at home to cover this right now."
     : undefined
 
@@ -182,12 +182,12 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             <p className="lede">
               {me.revoked
                 ? 'Someone at home turned it off. It can come back on the same way.'
-                : 'Ask whoever set this up to give you a limit — it takes them a few seconds.'}
+                : 'Ask whoever set this up to give you a limit. It takes them a few seconds.'}
             </p>
             <div className="spacer" />
             <div className="kicker kicker--faint">Nothing here belongs to you yet</div>
             <button className="link tap mt3" style={{ alignSelf: 'flex-start', paddingLeft: 0 }} onClick={lock}>
-              Lock this device
+              Sign out
             </button>
           </div>
         </div>
@@ -401,7 +401,7 @@ function MyWeek({ me, onLock }: { me: MemberState; onLock: () => void }) {
         <p className="empty mt5">Nothing spent yet. What you pay for shows up here.</p>
       )}
       <button className="link tap mt5" style={{ display: 'block', margin: '26px auto 0' }} onClick={onLock}>
-        Lock this device
+        Sign out
       </button>
     </div>
   )

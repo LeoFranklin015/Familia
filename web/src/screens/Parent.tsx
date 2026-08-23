@@ -36,14 +36,14 @@ const NOTES = {
   balance: {
     title: 'Where the money sits',
     body: [
-      'The balance is supplied to Aave and held as aUSDT in your own account. Nobody takes custody of it — not us, not the app.',
+      'The balance is supplied to Aave and held as aUSDT in your own account. Nobody takes custody of it. Not us, not the app.',
       'When someone spends, their allowance redeems from that position and pays the shop in the same transaction.',
     ],
   },
   fees: {
     title: 'Who pays for what',
     body: [
-      'You pay your own network fees in USDT — never ETH, and you never hold a native token.',
+      'You pay your own network fees in USDT, never ETH, and you never hold a native token.',
       'Everyone you invite is sponsored. They pay nothing, ever, and need no balance of any kind to spend.',
       'We quote a ceiling before you sign and charge what it actually cost, which is always less.',
     ],
@@ -51,7 +51,7 @@ const NOTES = {
   promised: {
     title: 'Promised out',
     body: [
-      'The total of everyone’s weekly limits. The spend manager is approved for exactly this amount — never more, and never unlimited.',
+      'The total of everyone’s weekly limits. The spend manager is approved for exactly this amount. Never more, and never unlimited.',
       'It drops the moment you turn someone off.',
     ],
   },
@@ -261,7 +261,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
         </p>
         <button className="btn btn--quiet tap mt4" onClick={() => setSheet(null)}>Got it</button>
         <button className="link tap mt2" style={{ display: 'block', margin: '10px auto 0' }} onClick={lock}>
-          Lock this device
+          Sign out
         </button>
       </Sheet>
 
@@ -469,7 +469,7 @@ function AddMoneySheet({
 
       <p className="amount-screen__under">
         {over
-          ? `Only ${floor2(max)} can be moved — the rest covers network fees.`
+          ? `Only ${floor2(max)} can be moved. The rest covers network fees.`
           : `${floor2(max)} ${symbol} ready · earns in Aave straight away`}
       </p>
 

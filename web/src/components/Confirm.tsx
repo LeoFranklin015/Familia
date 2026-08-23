@@ -21,7 +21,7 @@ export type Pending = {
   /** The quote failed. Signing is still possible; the ceiling just isn't known. */
   feeUnknown?: boolean
   symbol: string
-  /** Members never pay — say so rather than showing a zero. */
+  /** Members never pay. Shown as a badge rather than a figure. */
   covered?: boolean
   /** Why this cannot go through at all. Not a quoting failure. */
   blocked?: string
@@ -48,9 +48,9 @@ export function Confirm({
 
         <dl className="dl">
           <div className="dl__row dl__row--edge">
-            <dt>{covered ? 'Fee' : 'Fee, at most'}</dt>
+            <dt>{covered ? 'Network fee' : 'Fee, at most'}</dt>
             <dd>
-              {covered ? "Nothing — it's covered"
+              {covered ? <span className="badge">Sponsored</span>
                 : fee ? `${fee} ${symbol}`
                 : feeUnknown ? <span style={{ color: 'var(--muted)', fontWeight: 500 }}>Couldn&rsquo;t price it</span>
                 : <span className="skel" style={{ display: 'inline-block', width: 78, height: 14 }} />}

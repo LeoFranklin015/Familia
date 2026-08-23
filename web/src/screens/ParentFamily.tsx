@@ -125,7 +125,7 @@ export function FamilyTab({
                     className="mono"
                     style={{ fontSize: 11.5, padding: 12, borderRadius: 'var(--r3)', background: 'var(--fill)', color: 'var(--muted)', margin: '0 0 6px' }}
                   >
-                    {person.scopeId ?? '—'}
+                    {person.scopeId ?? 'Not granted yet'}
                   </p>
                 )}
               </>
@@ -288,7 +288,7 @@ function LimitsSheet({
 
       <p className="hint mt3">
         The contract holds these, not the app. Anything over them turns into a
-        request for you — it doesn&rsquo;t fail.
+        request for you. It doesn&rsquo;t fail.
       </p>
       {!wellFormed && (perTx.trim() || period.trim()) && (
         <p className="warn mt2">Amounts only, up to two decimal places.</p>

@@ -35,7 +35,7 @@ function parentOf(c: Context<any, any, any>) {
 function refuse(c: Context<any, any, any>) {
   return currentSession(c)
     ? c.json({ error: 'This account is not the one that set up the household.' }, 403)
-    : c.json({ error: 'Your session has ended — sign in again.', sessionEnded: true }, 401)
+    : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
 }
 
 /**
@@ -121,7 +121,7 @@ parentRoutes.post('/api/deposit', (c) =>
 
     const { hash } = await account.sendTransaction(plan.txs)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'Deposit did not go through — try again.' }, 502)
+    if (!result.success) return c.json({ error: 'Deposit did not go through. Try again.' }, 502)
 
     commit(family.id, (f) => {
       f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
@@ -170,7 +170,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
 
     const { hash } = await account.sendTransaction(batch)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'Granting the allowance failed — try again.' }, 502)
+    if (!result.success) return c.json({ error: 'Granting the allowance failed. Try again.' }, 502)
 
     const scopeId = eventArgFromLogs(result.logs, 'Granted', 'id')
     if (!scopeId) return c.json({ error: 'Granted event missing from receipt' }, 500)
@@ -187,7 +187,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
     })
     record(family.id, {
       kind: 'allowance',
-      text: `${member.name}'s limits set — ${perTx} a purchase, ${period} a week`,
+      text: `${member.name}'s limits set: ${perTx} a purchase, ${period} a week`,
       memberId: member.id, txHash: result.txHash,
     })
     return c.json({ scopeId, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
@@ -203,7 +203,7 @@ parentRoutes.post('/api/members/:id/revoke', (c) =>
     member.revoked = true
     const { hash } = await account.sendTransaction(buildRevokeBatch(member.scopeId, outstandingCaps(family)))
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'Revoke failed — try again.' }, 502)
+    if (!result.success) return c.json({ error: 'Revoke failed. Try again.' }, 502)
 
     commit(family.id, (f) => {
       const m = f.members.find((x) => x.id === member.id)
@@ -231,7 +231,7 @@ parentRoutes.post('/api/pay', (c) =>
 
     const { hash } = await account.sendTransaction(plan.txs)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
+    if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
 
     record(family.id, {
       kind: 'payment', text: `You paid ${amount} to ${recipientName(family, to)}`,
@@ -262,7 +262,7 @@ parentRoutes.post('/api/recipients', async (c) => {
     }),
     // Only the new address needs writing; the rest are already set.
     change: { allow: [canonical] },
-    note: (f) => `${name.trim()} can be paid — ${f.recipients.length} on the list`,
+    note: (f) => `${name.trim()} can be paid, ${f.recipients.length} on the list`,
   })
 })
 
@@ -345,7 +345,7 @@ async function applyBookChange(
   return parentWrite(c, async (account) => {
     const { hash } = await account.sendTransaction(txs)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'Updating the list on-chain failed — nothing changed.' }, 502)
+    if (!result.success) return c.json({ error: 'Updating the list on-chain failed. Nothing changed.' }, 502)
 
     // Re-apply to the household as it is now, not the copy held across the
     // wait — see `commit`.
@@ -412,7 +412,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
 
     const { hash } = await account.sendTransaction(txs)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: `Could not ${verdict} — try again.` }, 502)
+    if (!result.success) return c.json({ error: `Could not ${verdict}. Try again.` }, 502)
 
     commit(family.id, (f) => {
       const r = f.requests.find((x) => x.requestId === req.requestId)

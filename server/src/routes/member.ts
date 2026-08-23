@@ -28,7 +28,7 @@ function payeeName(family: Family, address: string): string {
 function refuse(c: Context<any, any, any>) {
   return currentSession(c)
     ? c.json({ error: 'This account cannot spend from that household.' }, 403)
-    : c.json({ error: 'Your session has ended — sign in again.', sessionEnded: true }, 401)
+    : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
 }
 
 function memberOf(c: Context<any, any, any>) {
@@ -86,7 +86,7 @@ memberRoutes.post('/api/spend', async (c) => {
   const ctx = memberOf(c)
   if (!ctx) return refuse(c)
   const { family, member } = ctx
-  if (!member.scopeId) return c.json({ error: 'You have no spending allowance yet — ask a parent.' }, 409)
+  if (!member.scopeId) return c.json({ error: 'You have no spending allowance yet. Ask a parent.' }, 409)
 
   // `force` skips this app's own pre-checks so the on-chain enforcement is
   // demonstrable: the manager reverts at simulation, and we decode it.
@@ -112,7 +112,7 @@ memberRoutes.post('/api/spend', async (c) => {
             data: managerIface.encodeFunctionData('spend', [member.scopeId, to, value]),
           })
           const result = await waitForUserOp(account, hash)
-          if (!result.success) return c.json({ error: 'The payment reverted on-chain — nothing was spent.' }, 502)
+          if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
           record(family.id, {
             kind: 'payment', text: `${member.name} paid ${amount} to ${payeeName(family, to)}`,
             amount: String(amount), memberId: member.id, txHash: result.txHash,
@@ -131,7 +131,7 @@ memberRoutes.post('/api/spend', async (c) => {
         data: managerIface.encodeFunctionData('requestSpend', [member.scopeId, to, value, REQUEST_TTL_S]),
       })
       const result = await waitForUserOp(account, hash)
-      if (!result.success) return c.json({ error: 'Could not send the ask — try again.' }, 502)
+      if (!result.success) return c.json({ error: 'Could not send the ask. Try again.' }, 502)
       const requestId = eventArgFromLogs(result.logs, 'SpendRequested', 'requestId')
       if (!requestId) return c.json({ error: 'SpendRequested event missing from receipt' }, 500)
 
