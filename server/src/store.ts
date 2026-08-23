@@ -70,6 +70,9 @@ export type SpendRequest = {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   createdAt: number
   txHash?: string
+  /** The member could not have paid this one themselves: it is outside the
+   *  places they are allowed. Approving it overrides that. */
+  offList?: boolean
 }
 
 export type Activity = {

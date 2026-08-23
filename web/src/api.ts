@@ -105,6 +105,9 @@ export type ParentState = {
     toName: string
     amount: string
     createdAt: number
+    /** They could not have paid this themselves: it is outside their places.
+     *  Approving overrides that, so the card says so. */
+    offList?: boolean
   }>
   /** The household address book. Names against addresses, and nothing more:
    *  an entry permits nothing until it is on someone's list. */

@@ -100,9 +100,22 @@ memberRoutes.post('/api/spend', async (c) => {
   if (scope.revoked && !force) return c.json({ error: 'Your spending was turned off by a parent.' }, 409)
   const spendableNow = force ? value : ((await managerRead.spendable(member.scopeId)) as bigint)
 
+  /**
+   * Somewhere this member may not pay on their own.
+   *
+   * `spend` checks the allowlist and reverts; `requestSpend` does not, and
+   * neither does `approveRequest`. That asymmetry is the contract saying the
+   * list bounds what a *spender* may do unilaterally, while the funder can
+   * always override — so an address off the list is a reason to ask, not a
+   * dead end. It has to be decided here rather than by amount alone, or an
+   * off-list payment within the caps would take the `spend` path and revert.
+   */
+  const offList = Boolean(member.allowOnly)
+    && !(member.allowed ?? []).some((a) => a.toLowerCase() === to.toLowerCase())
+
   try {
     return await actAs(c, { role: 'member' }, async (account) => {
-      if (value <= spendableNow) {
+      if (value <= spendableNow && !offList) {
         // Within limits: the member's own account calls spend(), and the money
         // leaves the parent's Aave position for the merchant in that one
         // transaction. Members are sponsored — a child should never need a
@@ -126,7 +139,8 @@ memberRoutes.post('/api/spend', async (c) => {
         }
       }
 
-      // Over the cap: this does not fail, it becomes an on-chain request.
+      // Over the cap, or outside their places: either way this does not fail,
+      // it becomes an on-chain request for someone at home to settle.
       const { hash } = await account.sendTransaction({
         to: MANAGER, value: 0n,
         data: managerIface.encodeFunctionData('requestSpend', [member.scopeId, to, value, REQUEST_TTL_S]),
@@ -142,10 +156,16 @@ memberRoutes.post('/api/spend', async (c) => {
         f.requests.push({
           requestId, memberId: member.id, to, toName: payeeName(family, to),
           amount: String(amount), status: 'pending', createdAt: Date.now(), txHash: result.txHash,
+          // So the guardian is told they would be overriding a restriction,
+          // not just approving a large amount.
+          offList,
         })
       })
       await record(family.id, {
-        kind: 'ask', text: `${member.name} asked to pay ${amount} to ${payeeName(family, to)}`,
+        kind: 'ask',
+        text: offList
+          ? `${member.name} asked to pay ${amount} to ${payeeName(family, to)}, outside their places`
+          : `${member.name} asked to pay ${amount} to ${payeeName(family, to)}`,
         amount: String(amount), memberId: member.id, txHash: result.txHash,
       })
       return c.json({ kind: 'asked', requestId, txHash: result.txHash })

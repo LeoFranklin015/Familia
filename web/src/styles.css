@@ -722,6 +722,16 @@ a:hover { color: #fff; }
 .ask + .ask { margin-top: 10px; }
 .ask__text { font-size: 15px; line-height: 1.4; text-wrap: pretty; }
 .ask__at { font-size: 11.5px; margin-top: 4px; color: var(--muted); }
+.ask__flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--warn);
+}
+.ask__flag svg { flex: none; margin-top: 1px; }
 .ask__do { display: flex; gap: 8px; margin-top: 14px; }
 
 .empty {

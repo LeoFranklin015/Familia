@@ -78,21 +78,26 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   // guardian approving would not help — approveRequest still has to pull the
   // funds — so this is not an "ask" case.
   const shortAtHome = !overPerTx && !overWeek && value > headroom
-  const over = value > 0 && (overPerTx || overWeek)
   // Their own list, not the household's. `known` only means the address has a
   // name; being allowed to pay it is a separate question.
   const canPay = (a: string) =>
     !me.allowOnly || me.allowed.some((x) => x.toLowerCase() === a.trim().toLowerCase())
   const offList = valid && !canPay(address)
-  const ready = valid && value > 0 && !shortAtHome && !offList
 
-  /** Why this won't go through as typed. One line, never a wall. */
+  // Anything the contract will not let them do on their own becomes a request
+  // rather than a refusal. The chain agrees: `requestSpend` does not check the
+  // allowlist, and neither does the guardian's `approveRequest`.
+  const over = value > 0 && (overPerTx || overWeek || offList)
+  const ready = valid && value > 0 && !shortAtHome
+
+  /** Why this needs saying. Never a refusal: the only thing that stops a
+   *  payment here is an address that isn't one. */
   const problem = !address ? undefined
     : !valid ? "That doesn't look like an address yet."
-    : offList ? 'Not one of your places, so the contract will refuse this one.'
+    : offList ? 'Not one of your places, so this one needs a yes from home.'
     : undefined
 
-  const hint = offList ? 'Ask at home to have this one added to your places.'
+  const hint = offList ? 'Outside your places, so this goes home to say yes to.'
     : overPerTx ? `Over your ${two(me.limit)} limit, so this goes home to say yes to.`
     : overWeek && value > 0 ? 'More than you have left this week. A parent can wave it through.'
     : shortAtHome ? "There isn't enough at home to cover this right now."
@@ -274,9 +279,8 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
             onChange={setTo}
             onScan={() => setScan(true)}
             canScan={scanningSupported()}
-            recipients={me.allowOnly ? me.recipients.filter((r) => canPay(r.address)) : me.recipients}
+            recipients={me.recipients}
             problem={problem}
-            blocked={offList}
             onNext={() => setStep('amount')}
             nextLabel={`Pay ${name}`}
           />

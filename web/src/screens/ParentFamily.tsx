@@ -263,6 +263,12 @@ function Ask({ r, act }: { r: ParentState['pendingRequests'][number]; act: Act }
     <div className="ask">
       <div className="ask__text">{r.memberName} wants to pay {r.amount} at {r.toName}.</div>
       <div className="ask__at">Asked {r.createdAt ? relative(r.createdAt) : 'just now'}</div>
+      {r.offList && (
+        <div className="ask__flag">
+          <Icon name="warning" size={14} />
+          <span>Outside {r.memberName}&rsquo;s places. Saying yes pays it anyway.</span>
+        </div>
+      )}
       <div className="ask__do">
         <button className="btn btn--sm btn--row tap" onClick={() => settle('approve')}>Approve</button>
         <button
