@@ -13,6 +13,59 @@ const YEAR = 31_536_000
 const EXTRA_DP = 3
 const DP = 6 + EXTRA_DP
 
+type Anchor = { base: string; at: number; read: string }
+
+/**
+ * Where each balance is counting from, kept outside React.
+ *
+ * The anchor belongs to the position, not to whichever screen happens to be
+ * showing it. Held in a ref it died with the component, so switching tabs and
+ * coming back dropped the carried tail and the figure stepped backwards before
+ * climbing again — the same sawtooth as re-anchoring on every poll, just
+ * triggered by navigation instead.
+ *
+ * Keyed, so two positions never share one, and so a test can use its own.
+ */
+const anchors = new Map<string, Anchor>()
+
+/** Forget one, or all of them. For tests and for signing out. */
+export function forgetAccrual(key?: string): void {
+  if (key === undefined) anchors.clear()
+  else anchors.delete(key)
+}
+
+/**
+ * Where the count should run from, given a fresh reading.
+ *
+ * A new reading is a correction, not a restart. The chain's six decimals only
+ * move every quarter of an hour at these rates, so adopting each read would
+ * send the accrued tail back to zero ten times a minute.
+ *
+ * Pure, and separate from the hook, because this rule is the whole of the
+ * behaviour worth testing and testing it should not need a renderer.
+ */
+export function nextAnchor(
+  prev: Anchor,
+  balance: string,
+  apr: number,
+  readAt: number,
+  now: number,
+): Anchor {
+  if (balance === prev.read) return prev
+
+  const projected = project(prev.base, apr, prev.at, now)
+  const fell = Number(balance) < Number(prev.base)
+  const chainAhead = Number(balance) > Number(projected)
+
+  return fell || chainAhead
+    // Money left the position, or the chain has passed our projection: either
+    // way the chain is right and the figure should say so.
+    ? { base: balance, at: readAt, read: balance }
+    // The usual case. The chain has not caught up with what we are showing
+    // yet, so carry on from where we are rather than stepping backwards.
+    : { base: projected, at: now, read: balance }
+}
+
 /**
  * A balance that keeps earning while you look at it.
  *
@@ -41,6 +94,8 @@ const DP = 6 + EXTRA_DP
  * smaller than the cents rather than beside them.
  */
 export function useAccruing(
+  /** Which position this is. Anchors are kept per key across remounts. */
+  key: string,
   /** The last on-chain balance, as a decimal string. */
   balance: string,
   /** Aave's annual supply rate, as a fraction. Zero holds the figure still. */
@@ -49,31 +104,19 @@ export function useAccruing(
   readAt: number,
 ): string {
   const [now, setNow] = useState(() => Date.now())
-
-  // Where the count is running from. Deliberately *not* reset on every poll:
-  // the chain's six decimals only move every quarter of an hour at these
-  // rates, so re-anchoring to each read sent the accrued digits back to zero
-  // ten times a minute — a sawtooth, not a counter.
-  const anchor = useRef({ base: balance, at: readAt })
-  const lastRead = useRef(balance)
   const rate = useRef(apr)
   rate.current = apr
 
-  // A new reading is a correction, not a restart.
-  if (balance !== lastRead.current) {
-    lastRead.current = balance
-    const at = Date.now()
-    const projected = project(anchor.current.base, apr, anchor.current.at, at)
-    const fell = Number(balance) < Number(anchor.current.base)
-    const chainAhead = Number(balance) > Number(projected)
+  let anchor = anchors.get(key)
+  if (!anchor) {
+    anchor = { base: balance, at: readAt, read: balance }
+    anchors.set(key, anchor)
+  }
 
-    anchor.current = fell || chainAhead
-      // Money left the position, or the chain has passed our projection:
-      // either way the chain is right and the figure should say so.
-      ? { base: balance, at: readAt }
-      // The usual case. The chain has not caught up with what we are showing
-      // yet, so carry on from where we are rather than stepping backwards.
-      : { base: projected, at }
+  const advanced = nextAnchor(anchor, balance, apr, readAt, Date.now())
+  if (advanced !== anchor) {
+    anchor = advanced
+    anchors.set(key, anchor)
   }
 
   const live = apr > 0 && Number(balance) > 0
@@ -89,7 +132,7 @@ export function useAccruing(
 
   if (!live) return balance
 
-  return project(anchor.current.base, rate.current, anchor.current.at, now)
+  return project(anchor.base, rate.current, anchor.at, now)
 }
 
 /**

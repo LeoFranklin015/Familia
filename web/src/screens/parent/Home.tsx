@@ -52,6 +52,7 @@ export function Home({
         </div>
         <div style={{ marginTop: 12 }}>
           <LiveFigure
+            account={st.wallet.address}
             balance={st.wallet.pot}
             apr={st.wallet.apr ?? 0}
             readAt={st.wallet.potAt ?? Date.now()}

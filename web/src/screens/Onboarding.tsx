@@ -3,7 +3,7 @@ import { api } from '../api'
 import { knownCredentialId, rememberCredentialId } from '../auth'
 import { createPasskey, unlockPasskey } from '../webauthn'
 import { KeyChoice } from '../components/KeyChoice'
-import { Blob, Icon } from '../components/ui'
+import { Icon } from '../components/ui'
 
 type Step = 'welcome' | 'names' | 'secure' | 'signin'
 
@@ -96,43 +96,37 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
         <div className="screen__pad">
           <div className="kicker">Familia</div>
 
-          {/* Show the thing rather than describe it: two cards lifted out of
-              the real app, tilted the way they'd sit in a hand. */}
-          <div style={{ marginTop: 26, position: 'relative', height: 212 }} aria-hidden="true">
-            <Blob size={62} right={8} top={-20} rotate={-18} opacity={0.42} />
-            <Blob size={40} right={74} top={56} rotate={14} opacity={0.34} />
-            <Blob size={48} left={-6} bottom={-10} rotate={-26} opacity={0.34} />
+          {/* The household at the middle, and the money going round it. Three
+              rings at different radii and speeds, each carrying one thing the
+              house pays for. The family is what stays still. */}
+          <div className="orbit" aria-hidden="true">
+            <div className="orbit__glow" />
+            <div className="orbit__path orbit__path--1" />
+            <div className="orbit__path orbit__path--2" />
+            <div className="orbit__path orbit__path--3" />
 
-            <div className="balance" style={{ position: 'absolute', left: 0, top: 0, right: 30, padding: 20 }}>
-              <div className="kicker" style={{ fontSize: 10 }}>Balance</div>
-              <div className="figure" style={{ marginTop: 10 }}>
-                <span className="figure__big" style={{ fontSize: 42, lineHeight: 1 }}>499</span>
-                <span className="figure__cents" style={{ fontSize: 20, color: 'var(--muted)' }}>.99</span>
-              </div>
-              <div className="note" style={{ marginTop: 8, fontSize: 11 }}>USDT · earning in Aave</div>
+            <div className="orbit__core">
+              <Icon name="family" size={40} />
             </div>
 
-            <div
-              style={{
-                position: 'absolute', left: 52, top: 130, right: 0, padding: '14px 16px',
-                borderRadius: 'var(--r2)', background: 'var(--pale)',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}
-            >
-              <span className="avatar avatar--sm" style={{ background: 'var(--deep)', color: 'var(--pale)' }}>M</span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>Maya</div>
-                <div style={{ fontSize: 11, color: 'var(--on-pale)' }}>13.60 USDT left this week</div>
+            {[
+              { ring: 1, label: '20' },
+              { ring: 2, label: '15.49' },
+              { ring: 3, label: '8' },
+            ].map((c) => (
+              <div key={c.ring} className={`orbit__arm orbit__arm--${c.ring}`}>
+                <span className="orbit__coin">{c.label}</span>
               </div>
-            </div>
+            ))}
           </div>
 
           <div className="spacer" />
 
-          <h1 className="display">Pocket money that can&rsquo;t go wrong.</h1>
+          <h1 className="display">One wallet the whole house runs on.</h1>
           <p className="lede mt3" style={{ marginBottom: 22 }}>
-            One balance for the house. You set what each person can spend, and the
-            limits hold whether or not anyone is watching.
+            Pocket money, the shopping and the monthly bills, out of one balance
+            that earns while it sits. You set what each person and each service
+            can take, and those limits are held by a contract, not by us.
           </p>
 
           <button className="btn tap" onClick={() => go('names')}>Get started</button>

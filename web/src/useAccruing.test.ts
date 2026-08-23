@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { project } from './useAccruing'
+import { nextAnchor, project } from './useAccruing'
 
 const APR = 0.000111          // Base Sepolia's real USDT supply rate
 const BALANCE = '292.000056'
@@ -69,5 +69,53 @@ describe('the poll cycle', () => {
       last = shown
     }
     expect(last).toBeGreaterThan(Number(BALANCE))
+  })
+})
+
+describe('the anchor', () => {
+  const fresh = (balance: string) => ({ base: balance, at: T0, read: balance })
+
+  it('ignores a reading it already has', () => {
+    const a = fresh(BALANCE)
+    expect(nextAnchor(a, BALANCE, APR, T0, T0 + 60_000)).toBe(a)
+  })
+
+  it('carries the accrued tail rather than adopting a lagging read', () => {
+    // A minute on screen, then the same six-decimal reading arrives again from
+    // a later poll. The chain has not moved yet, so the count must not fall
+    // back to it: that is the sawtooth this whole design exists to avoid.
+    const a = fresh('100.000000')
+    const b = nextAnchor(a, '100.000001', APR, T0 + 60_000, T0 + 60_000)
+    expect(Number(b.base)).toBeGreaterThan(100)
+    expect(b.at).toBe(T0 + 60_000)
+  })
+
+  it('snaps to the chain when money has left the position', () => {
+    const a = fresh('100.000000')
+    const b = nextAnchor(a, '92.000000', APR, T0 + 60_000, T0 + 60_000)
+    expect(b.base).toBe('92.000000')
+    expect(b.at).toBe(T0 + 60_000)
+  })
+
+  it('snaps to the chain when the chain has run ahead of us', () => {
+    const a = fresh('100.000000')
+    const b = nextAnchor(a, '150.000000', APR, T0 + 60_000, T0 + 60_000)
+    expect(b.base).toBe('150.000000')
+  })
+
+  it('never steps backwards across a remount', () => {
+    // Switching tabs unmounts the figure; the anchor outlives it. Readings
+    // climb, as a position with nothing leaving it does, and every value shown
+    // must be at least the one before.
+    let a = fresh('100.000000')
+    let shown = Number(project(a.base, APR, a.at, T0 + 60_000))
+
+    for (let poll = 1; poll <= 20; poll++) {
+      const t = T0 + 60_000 + poll * 10_000
+      a = nextAnchor(a, `100.0000${String(poll).padStart(2, '0')}`, APR, t, t)
+      const next = Number(project(a.base, APR, a.at, t))
+      expect(next).toBeGreaterThanOrEqual(shown)
+      shown = next
+    }
   })
 })

@@ -11,6 +11,7 @@ import { Confirm, type Term } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { ScreenSkeleton } from '../components/ui'
 import { two } from '../lib/money'
+import { forgetAccrual } from '../useAccruing'
 import { Activity } from './Activity'
 import { Home } from './parent/Home'
 import { AddMoneySheet } from './parent/AddMoneySheet'
@@ -98,6 +99,9 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
   /** Sign out. The vault stays; only this session ends. */
   const lock = async () => {
     try { await api.post('/api/logout') } catch { /* the session is going either way */ }
+    // The accrual anchor outlives the screen on purpose, so signing out has to
+    // clear it: the next person in should not inherit this balance's count.
+    forgetAccrual()
     onLogout()
   }
 

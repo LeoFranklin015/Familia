@@ -154,13 +154,15 @@ export function InfoButton({ label, onClick }: { label: string; onClick: () => v
  * animate three digits.
  */
 export function LiveFigure({
-  balance, apr, readAt, unit,
+  account, balance, apr, readAt, unit,
 }: {
+  /** Which position this is, so the count survives leaving the screen. */
+  account: string
   balance: string
   apr: number
   readAt: number
   unit?: string
 }) {
-  const value = useAccruing(balance, apr, readAt)
+  const value = useAccruing(account, balance, apr, readAt)
   return <Figure value={value} unit={unit} live={apr > 0} />
 }
