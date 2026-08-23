@@ -139,15 +139,13 @@ bun install && (cd server && bun install) && (cd web && bun install)
 (cd server && bun run start)  # http://localhost:8787
 ```
 
-Face ID needs HTTPS, so to use it from a phone:
+Open `http://localhost:8787`, start a family, and follow the two-step setup.
+Passkeys work on localhost, so Face ID needs nothing else. Open a kid's invite
+link in a second browser or a private window, since a passkey is tied to a
+browser profile and otherwise their unlock opens the parent's account.
 
-```bash
-cloudflared tunnel --url http://localhost:8787
-```
-
-Open the URL, start a family, follow the two-step setup. Passkeys are tied to a
-browser profile, so open a kid's invite link in a second browser or a private
-window.
+No passkey on your machine? Every screen that asks for one offers a passphrase
+instead, and the whole demo runs on that path.
 
 ### Environment
 
@@ -198,8 +196,8 @@ adequate for a testnet passphrase and not for real money. This is
 passkey-*gated*, not passkey-native: the on-chain signer is secp256k1, and Face
 ID derives the key that decrypts it.
 
-The author works on JAW, a passkey-native smart-account SDK with an on-chain
-permission manager, and `ScopedSpendManager` is conceptually adjacent. The
-contract here was written from scratch this weekend with no code imported, the
-delegate is eth-infinitism's `Simple7702Account`, and every WDK integration in
-this repo is new.
+Everything here was written this weekend with no code imported. There is no
+wallet or payment layer of our own underneath: WDK's gasless module is the
+execution layer for every write in the app, and the two contracts are the spend
+policy and the fee path on top of it. The only third-party contract is
+eth-infinitism's `Simple7702Account`, used unmodified as the delegate.
