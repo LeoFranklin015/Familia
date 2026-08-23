@@ -89,4 +89,4 @@ const port = Number(process.env.PORT ?? 8787)
 // Open storage before listening. A bad connection string should stop the
 // server here, not surface halfway through someone's first payment.
 const where = await openStore()
-serve({ fetch: app.fetch, port }, () => console.log(`kin server on :${port}  ·  storage: ${where}`))
+serve({ fetch: app.fetch, port }, () => console.log(`familia server on :${port}  ·  storage: ${where}`))

@@ -23,7 +23,7 @@ export function Device({ children }: { children: ReactNode }) {
           real thing is a phone, and how to get there. */}
       <aside className="stage__aside">
         <div className="stage__mark"><Mark size={40} /></div>
-        <p className="stage__brand">Kin</p>
+        <p className="stage__brand">Familia</p>
         <p className="stage__line">Pocket money with limits the network enforces.</p>
         <p className="stage__hint">Built for a phone. Open this address on yours to use Face ID.</p>
         <p className="stage__url num">{location.host}</p>

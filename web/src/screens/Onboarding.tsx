@@ -94,7 +94,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
     return (
       <div className="screen screen--welcome">
         <div className="screen__pad">
-          <div className="kicker">Kin</div>
+          <div className="kicker">Familia</div>
 
           {/* Show the thing rather than describe it: two cards lifted out of
               the real app, tilted the way they'd sit in a hand. */}
@@ -209,7 +209,7 @@ export default function Onboarding({ onReady }: { onReady: () => void }) {
 
         {step === 'signin' && (
           <>
-            <div className="kicker">Kin</div>
+            <div className="kicker">Familia</div>
             <div className="spacer" />
             <h2 className="title" style={{ marginBottom: 10 }}>Welcome back.</h2>
             <p className="lede">Same face, same account.</p>

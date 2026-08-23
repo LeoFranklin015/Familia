@@ -32,7 +32,7 @@ export async function createPasskey(userName: string): Promise<PasskeyResult | n
   const cred = (await navigator.credentials.create({
     publicKey: {
       challenge: rand(32),
-      rp: { name: 'Kin' },
+      rp: { name: 'Familia' },
       user: { id: rand(16), name: userName, displayName: userName },
       pubKeyCredParams: [
         { type: 'public-key', alg: -7 },

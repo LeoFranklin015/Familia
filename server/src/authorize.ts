@@ -10,6 +10,8 @@ import { getSession, getVault, type Session, type Vault } from './store.js'
 import { openVaultEntry, type KeySource } from './vault.js'
 import { withAccount, type GaslessAccount } from './wdk.js'
 
+// Named for what the app used to be called. Renaming it would sign every open
+// session out for nothing, and a cookie name is not user-visible.
 export const COOKIE = 'kin_session'
 
 export function currentSession(c: Context<any, any, any>): Promise<Session | undefined> {

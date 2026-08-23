@@ -202,6 +202,8 @@ function chosen(): Backend {
   if (!backend) {
     const uri = process.env.MONGODB_URI?.trim()
     backend = uri
+      // The default database keeps the app's former name: changing it would
+      // orphan every household already written. Set MONGODB_DB to override.
       ? mongoBackend(uri, process.env.MONGODB_DB?.trim() || 'kin')
       : fileBackend()
   }

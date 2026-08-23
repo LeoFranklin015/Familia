@@ -1,4 +1,4 @@
-# Kin
+# Familia
 
 One wallet for everything a household pays for. The kids' pocket money, the
 shopping, and the monthly bills, out of a single pot of USD₮ that earns while it
@@ -16,7 +16,7 @@ remember to phone someone.
 
 Three problems, one shape: **somebody spends, and you want a bound on it.**
 
-Kin keeps the money in one place and hands out bounded permissions against it. A
+Familia keeps the money in one place and hands out bounded permissions against it. A
 kid gets 20 a week, 5 at a time, at these shops. Netflix gets 15.49 a month, for
 a year, to its own address and nowhere else. Both are the same object on the same
 contract, and neither can be widened by the app, by us, or by whoever holds the
@@ -343,7 +343,7 @@ Node 22.18+, [bun](https://bun.sh). Foundry only for contract work, cloudflared
 only to reach it from a phone.
 
 ```bash
-git clone <this repo> && cd kin
+git clone <this repo> && cd familia
 cp .env.example .env        # fill in the values marked "you provide"
 bun install && (cd server && bun install) && (cd web && bun install)
 (cd web && bun run build)   # the server serves web/dist

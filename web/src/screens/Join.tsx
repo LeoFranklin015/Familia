@@ -59,7 +59,7 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
     return (
       <div className="screen screen--step">
         <div className="screen__pad">
-          <div className="kicker">Kin</div>
+          <div className="kicker">Familia</div>
           <div className="spacer" />
           <div className="markbox markbox--round" style={{ marginBottom: 24 }}>
             <Icon name="minus" size={26} />
@@ -79,7 +79,7 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
     return (
       <div className="screen screen--welcome">
         <div className="screen__pad" aria-busy="true">
-          <div className="kicker">Kin</div>
+          <div className="kicker">Familia</div>
           <div className="spacer" />
           <Skeleton h={58} w="58px" r={999} />
           <div className="mt5"><Skeleton h={34} w="70%" /></div>
@@ -95,7 +95,7 @@ export default function Join({ token, onJoined }: { token: string; onJoined: () 
   return (
     <div className="screen screen--welcome">
       <div className="screen__pad">
-        <div className="kicker">Kin</div>
+        <div className="kicker">Familia</div>
         <Blob size={70} right={6} top={112} rotate={-20} opacity={0.38} />
         <Blob size={46} left={-16} top={196} rotate={16} opacity={0.3} />
         <div className="spacer" />

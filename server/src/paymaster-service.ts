@@ -75,7 +75,7 @@ paymasterService.post('/paymaster', async (c) => {
         paymasterData: '0x',
         paymasterVerificationGasLimit: hex(80_000n),
         paymasterPostOpGasLimit: hex(POSTOP_GAS),
-        sponsor: { name: 'Kin USD₮ paymaster' },
+        sponsor: { name: 'Familia USD₮ paymaster' },
         isFinal: body.method === 'pm_getPaymasterData',
       })
     }
