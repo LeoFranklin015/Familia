@@ -19,68 +19,6 @@ Tether WDK Track 2 (gasless), on Base Sepolia.
 - **Fees.** The parent pays in USD₮ through a paymaster in this repo. Kids pay
   nothing. Billers pay their own gas.
 
-## Run it
-
-Needs Node 22.18+, [bun](https://bun.sh), and Foundry if you want to redeploy
-the contracts.
-
-```bash
-git clone <this repo> && cd familia
-cp .env.example .env
-bun install && (cd server && bun install) && (cd web && bun install)
-(cd web && bun run build)     # the server serves web/dist
-(cd server && bun run start)  # http://localhost:8787
-```
-
-Face ID needs HTTPS, so to use it from a phone:
-
-```bash
-cloudflared tunnel --url http://localhost:8787
-```
-
-Open the URL, start a family, follow the two-step setup. Passkeys are tied to a
-browser profile, so open a kid's invite link in a second browser or a private
-window.
-
-### Environment
-
-Only the first three are needed to run against the already-deployed contracts.
-
-| Variable | |
-|---|---|
-| `PIMLICO_API_KEY` | dashboard.pimlico.io. Leave the sponsorship policy unrestricted, because member addresses do not exist yet |
-| `BASE_SEPOLIA_RPC_URL` | Alchemy/Infura/dRPC. `https://sepolia.base.org` works but rate-limits under load |
-| `DEPLOYER_PRIVATE_KEY` | Test key with a little Base Sepolia ETH. Deploys the contracts and, by default, collects subscriptions |
-| `BILLER_PRIVATE_KEY` | Optional. The subscription collector, if you want it separate from the deployer |
-| `MONGODB_URI` | Optional. Unset falls back to JSON files under `server/data/` |
-| `POLICY_ID` | Optional Pimlico sponsorship policy id |
-| `SEPOLIA_RPC_URL` | Only for the two scripts that document why the app is not on Ethereum Sepolia |
-
-`DELEGATION_ADDRESS`, `SCOPED_SPEND_MANAGER_ADDRESS` and
-`USDT_PAYMASTER_ADDRESS` are pre-filled in `.env.example` with the live
-deployments below.
-
-### Redeploying the contracts
-
-```bash
-(cd contracts && forge script script/DeployBase.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
-(cd paymaster && forge script script/Deploy.s.sol     --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
-```
-
-Put the two addresses in `.env`. The paymaster script also funds its EntryPoint
-deposit and **stakes** it. Without the stake, bundlers reject every operation,
-because reading the sender's token balance during validation is external-storage
-access that ERC-7562 only permits a staked paymaster.
-
-### Tests
-
-```bash
-cd contracts && forge test     # 19  the spend manager
-cd paymaster && forge test     #  9  the paymaster
-cd server    && bun run test   #  4  the vault, PRF and passphrase
-cd web       && bun run test   # 52  money, addresses, time, accrual
-```
-
 ## Demo
 
 Live on Base Sepolia. `./server/e2e-demo.sh` runs beats 1–5 headlessly against a
@@ -187,6 +125,68 @@ real quote. It says "up to" because `postOp` charges the actual cost: a grant
 quoted at 0.012832 settled at 0.005075. The rate is a fixed
 1 native = 2500 USD₮ set at deploy, not an oracle, because on a testnet an
 oracle quotes fiction.
+
+## Run it
+
+Needs Node 22.18+, [bun](https://bun.sh), and Foundry if you want to redeploy
+the contracts.
+
+```bash
+git clone <this repo> && cd familia
+cp .env.example .env
+bun install && (cd server && bun install) && (cd web && bun install)
+(cd web && bun run build)     # the server serves web/dist
+(cd server && bun run start)  # http://localhost:8787
+```
+
+Face ID needs HTTPS, so to use it from a phone:
+
+```bash
+cloudflared tunnel --url http://localhost:8787
+```
+
+Open the URL, start a family, follow the two-step setup. Passkeys are tied to a
+browser profile, so open a kid's invite link in a second browser or a private
+window.
+
+### Environment
+
+Only the first three are needed to run against the already-deployed contracts.
+
+| Variable | |
+|---|---|
+| `PIMLICO_API_KEY` | dashboard.pimlico.io. Leave the sponsorship policy unrestricted, because member addresses do not exist yet |
+| `BASE_SEPOLIA_RPC_URL` | Alchemy/Infura/dRPC. `https://sepolia.base.org` works but rate-limits under load |
+| `DEPLOYER_PRIVATE_KEY` | Test key with a little Base Sepolia ETH. Deploys the contracts and, by default, collects subscriptions |
+| `BILLER_PRIVATE_KEY` | Optional. The subscription collector, if you want it separate from the deployer |
+| `MONGODB_URI` | Optional. Unset falls back to JSON files under `server/data/` |
+| `POLICY_ID` | Optional Pimlico sponsorship policy id |
+| `SEPOLIA_RPC_URL` | Only for the two scripts that document why the app is not on Ethereum Sepolia |
+
+`DELEGATION_ADDRESS`, `SCOPED_SPEND_MANAGER_ADDRESS` and
+`USDT_PAYMASTER_ADDRESS` are pre-filled in `.env.example` with the live
+deployments below.
+
+### Redeploying the contracts
+
+```bash
+(cd contracts && forge script script/DeployBase.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
+(cd paymaster && forge script script/Deploy.s.sol     --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast)
+```
+
+Put the two addresses in `.env`. The paymaster script also funds its EntryPoint
+deposit and **stakes** it. Without the stake, bundlers reject every operation,
+because reading the sender's token balance during validation is external-storage
+access that ERC-7562 only permits a staked paymaster.
+
+### Tests
+
+```bash
+cd contracts && forge test     # 19  the spend manager
+cd paymaster && forge test     #  9  the paymaster
+cd server    && bun run test   #  4  the vault, PRF and passphrase
+cd web       && bun run test   # 52  money, addresses, time, accrual
+```
 
 ## Limits and disclosure
 
