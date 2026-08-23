@@ -12,17 +12,11 @@ import {
 import { mustFamily, record, updateFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
+import { payeeName } from '../lib/names.js'
 
 export const memberRoutes = new Hono()
 
 const REQUEST_TTL_S = 24 * 3600
-
-/** A name for an address if the household has one, otherwise the address
- *  itself, shortened. What ends up in the history either way. */
-function payeeName(family: Family, address: string): string {
-  return family.recipients.find((r) => r.address.toLowerCase() === address.toLowerCase())?.name
-    ?? `${address.slice(0, 6)}…${address.slice(-4)}`
-}
 
 /** Same as the parent side: a stale cookie is not a role error. */
 async function refuse(c: Context<any, any, any>) {

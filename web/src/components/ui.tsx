@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { figureSize, split, splitLive } from '../lib/money'
 
 /**
  * An amount, split three ways.
@@ -30,84 +31,6 @@ export function Figure({
       {unit && <span className="figure__unit">{unit}</span>}
     </div>
   )
-}
-
-/** Like `split`, but keeps trailing zeros: a digit that vanishes when it
- *  reaches zero makes the figure jitter in width. */
-export function splitLive(value: string): { big: string; cents: string; tail: string } {
-  const [w = '0', d = ''] = value.split('.')
-  return { big: w, cents: `.${d.slice(0, 2).padEnd(2, '0')}`, tail: d.slice(2) }
-}
-
-/** `499.999999` → `499` · `.99` · `9999`. */
-export function split(value: string): { big: string; cents: string; tail: string } {
-  const n = Number(value || '0')
-  const s = (Number.isFinite(n) ? n : 0).toFixed(6)
-  const [w, d] = s.split('.')
-  return { big: w, cents: `.${d.slice(0, 2)}`, tail: d.slice(2).replace(/0+$/, '') }
-}
-
-/** Two decimals, for anywhere a figure sits inline rather than on display. */
-export function two(value: string | number | null | undefined): string {
-  const n = Number(value ?? 0)
-  return (Number.isFinite(n) ? n : 0).toFixed(2)
-}
-
-/**
- * Two decimals, truncated rather than rounded.
- *
- * For a ceiling this is the difference between working and not: rounding
- * 99999.615 to 99999.62 puts the figure *above* the limit it came from, so
- * "use the lot" fills the field with an amount the same screen then calls too
- * much.
- */
-export function floor2(v: string | number | null | undefined): string {
-  const n = Number(v ?? 0)
-  if (!Number.isFinite(n)) return '0.00'
-  // Truncate the decimal string rather than scaling by 100: `n * 100` is
-  // inexact, and `Math.floor` then shaves a cent off figures that were
-  // already exact to two places ("81882.680000" → "81882.67").
-  const [w, d = ''] = n.toFixed(6).split('.')
-  return `${w}.${d.slice(0, 2).padEnd(2, '0')}`
-}
-
-/**
- * An amount as an integer of base units.
- *
- * Money compared as a float disagrees with money displayed as a float, and the
- * gap is not rare: for 17% of (weekly limit, spent) pairs, `limit - spent`
- * lands just under the two-decimal figure shown for it — so typing exactly the
- * number on screen reads as *over* the limit. The chain has no such problem,
- * because it only ever works in whole base units. Neither should we.
- */
-export function base(v: string | number | null | undefined): number {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? Math.round(n * 1e6) : 0
-}
-
-/** Back to a display string. */
-export function fromBase(units: number): string {
-  return (units / 1e6).toFixed(6)
-}
-
-/**
- * A font size that keeps a figure on one line.
- *
- * Tabular digits run about 0.6em wide, so the width budget goes quickly: at
- * 62px, eight characters need ~300px and wrap inside a 402px phone. The
- * ceiling steps down with length, and `cqw` handles narrow screens on top of
- * that.
- */
-export function figureSize(text: string): string {
-  const n = text.length
-  const px = n <= 5 ? 62 : n <= 6 ? 56 : n <= 7 ? 50 : n <= 8 ? 44 : n <= 10 ? 36 : 30
-  // Three ceilings: the figure's own length, the container's width, and its
-  // height — a short window is the case that actually overflows.
-  return `min(${px}px, 15cqw, 9cqh)`
-}
-
-export function shortAddress(a: string): string {
-  return a && a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a || ''
 }
 
 /** Content-shaped placeholder. A screen that knows its shape shouldn't

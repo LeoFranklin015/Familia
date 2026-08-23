@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import { figureSize, Icon, KindIcon } from './ui'
+import { Icon, KindIcon } from './ui'
+import { figureSize } from '../lib/money'
+import { labelFor, looksLikeAddress, matchRecipient, sameAddress } from '../lib/address'
 import type { Recipient } from '../api'
 
 /**
@@ -24,7 +26,7 @@ export function To({
   problem?: string
   canScan: boolean
 }) {
-  const known = match(recipients, value)
+  const known = matchRecipient(recipients, value)
   return (
     <>
       <div className="to">
@@ -80,7 +82,7 @@ export function Saved({
           className="pill tap"
           // A choice among several, not a toggle: activating the selected one
           // re-selects it rather than turning it off.
-          aria-current={same(r.address, value) ? 'true' : undefined}
+          aria-current={sameAddress(r.address, value) ? 'true' : undefined}
           onClick={() => onPick(r.address)}
         >
           <KindIcon kind={r.kind} />
@@ -89,30 +91,6 @@ export function Saved({
       ))}
     </div>
   )
-}
-
-export function match(recipients: Recipient[], address: string): Recipient | null {
-  const t = address.trim().toLowerCase()
-  if (!t) return null
-  return recipients.find((r) => r.address.toLowerCase() === t) ?? null
-}
-
-export function same(a: string, b: string): boolean {
-  return Boolean(a) && a.trim().toLowerCase() === b.trim().toLowerCase()
-}
-
-/** Good enough to submit. The chain does the real checking; this only decides
- *  whether the button is live. */
-export function looksLikeAddress(a: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(a.trim())
-}
-
-/** A name if the household has one, otherwise the address, shortened. */
-export function label(recipients: Recipient[], address: string): string {
-  const r = match(recipients, address)
-  if (r) return r.name
-  const t = address.trim()
-  return t.length > 14 ? `${t.slice(0, 6)}…${t.slice(-4)}` : t
 }
 
 /**

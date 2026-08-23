@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { api, type ParentState, type Recipient } from '../api'
 import { Sheet } from '../components/Sheet'
-import { Icon, KindIcon, shortAddress, two } from '../components/ui'
-import { resetDay } from './Activity'
+import { Icon, KindIcon } from '../components/ui'
+import { two } from '../lib/money'
+import { shortAddress } from '../lib/address'
+import { resetDay, whenLower } from '../lib/time'
 import type { Act } from './Parent'
 
 type Member = ParentState['members'][number]
@@ -262,7 +264,7 @@ function Ask({ r, act }: { r: ParentState['pendingRequests'][number]; act: Act }
   return (
     <div className="ask">
       <div className="ask__text">{r.memberName} wants to pay {r.amount} at {r.toName}.</div>
-      <div className="ask__at">Asked {r.createdAt ? relative(r.createdAt) : 'just now'}</div>
+      <div className="ask__at">Asked {whenLower(r.createdAt)}</div>
       {r.offList && (
         <div className="ask__flag">
           <Icon name="warning" size={14} />
@@ -281,15 +283,6 @@ function Ask({ r, act }: { r: ParentState['pendingRequests'][number]; act: Act }
       </div>
     </div>
   )
-}
-
-function relative(at: number): string {
-  const mins = Math.round((Date.now() - at) / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`
-  const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  return 'a while ago'
 }
 
 /* ── limits ──────────────────────────────────────────────────────────────── */

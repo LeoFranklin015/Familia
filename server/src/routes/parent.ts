@@ -15,6 +15,7 @@ import { mustFamily, record, updateFamily, type Family, type Member } from '../s
 import { waitForUserOp } from '../wdk.js'
 import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
 import { bootstrapStatus } from '../bootstrap.js'
+import { payeeName } from '../lib/names.js'
 
 export const parentRoutes = new Hono()
 
@@ -211,7 +212,7 @@ parentRoutes.post('/api/pay', (c) =>
     if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
 
     await record(family.id, {
-      kind: 'payment', text: `You paid ${amount} to ${recipientName(family, to)}`,
+      kind: 'payment', text: `You paid ${amount} to ${payeeName(family, to)}`,
       amount: String(amount), txHash: result.txHash,
     })
     return c.json({ txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
@@ -364,11 +365,6 @@ parentRoutes.post('/api/members/:id/allowlist', (c) =>
     })
     return c.json({ onchain: true, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
-
-function recipientName(family: Family, address: string): string {
-  return family.recipients.find((r) => r.address.toLowerCase() === address.toLowerCase())?.name
-    ?? `${address.slice(0, 6)}…${address.slice(-4)}`
-}
 
 function randomId(): string {
   return 'r' + Math.random().toString(36).slice(2, 10)

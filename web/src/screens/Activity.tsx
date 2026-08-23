@@ -1,5 +1,6 @@
 import type { Activity as Item } from '../api'
 import { Icon } from '../components/ui'
+import { when } from '../lib/time'
 
 /**
  * What happened, newest first.
@@ -65,23 +66,3 @@ export function Activity({ items, title }: { items: Item[]; title?: string }) {
   )
 }
 
-/** Relative for the first day, then the weekday, then the date. Nobody wants
- *  a timestamp on their own spending. */
-export function when(at: number): string {
-  const secs = Math.round((Date.now() - at) / 1000)
-  if (secs < 45) return 'Just now'
-  if (secs < 90) return 'A minute ago'
-  if (secs < 3600) return `${Math.round(secs / 60)} minutes ago`
-  if (secs < 5400) return 'An hour ago'
-  if (secs < 86400) return `${Math.round(secs / 3600)} hours ago`
-  if (secs < 172800) return 'Yesterday'
-  const d = new Date(at)
-  if (secs < 604800) return d.toLocaleDateString(undefined, { weekday: 'long' })
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-}
-
-/** "Sunday", for a period that resets. */
-export function resetDay(at: number): string {
-  if (!at) return 'Not set'
-  return new Date(at * 1000).toLocaleDateString(undefined, { weekday: 'long' })
-}

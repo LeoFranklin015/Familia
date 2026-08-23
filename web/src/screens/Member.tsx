@@ -5,10 +5,12 @@ import { Confirm, type Pending } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { Sheet } from '../components/Sheet'
 import { AccountButton, AccountSheet } from '../components/Account'
-import { AmountStep, label, looksLikeAddress, match, WhoStep } from '../components/Pay'
+import { AmountStep, WhoStep } from '../components/Pay'
+import { labelFor, looksLikeAddress, matchRecipient } from '../lib/address'
 import { Scan, scanningSupported } from '../components/Scan'
-import { base, Blob, Figure, fromBase, Icon, ScreenSkeleton, split, two } from '../components/ui'
-import { resetDay, when } from './Activity'
+import { Blob, Figure, Icon, ScreenSkeleton } from '../components/ui'
+import { base, fromBase, split, two } from '../lib/money'
+import { resetDay, when } from '../lib/time'
 
 type Tab = 'home' | 'pay' | 'activity'
 
@@ -68,9 +70,9 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const headroom = base(me.headroom)
   const perTx = base(me.limit)
   const address = to.trim()
-  const known = match(me.recipients, address)
+  const known = matchRecipient(me.recipients, address)
   const valid = looksLikeAddress(address)
-  const name = label(me.recipients, address)
+  const name = labelFor(me.recipients, address)
 
   const overPerTx = perTx > 0 && value > perTx
   const overWeek = value > weekLeft

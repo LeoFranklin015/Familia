@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { api, type ParentState } from '../api'
-import { AmountStep, label, looksLikeAddress, WhoStep } from '../components/Pay'
+import { AmountStep, WhoStep } from '../components/Pay'
+import { labelFor, looksLikeAddress } from '../lib/address'
 import { Scan, scanningSupported } from '../components/Scan'
-import { floor2, Icon, two } from '../components/ui'
+import { Icon } from '../components/ui'
+import { floor2, two } from '../lib/money'
 import type { Act } from './Parent'
 
 /**
@@ -26,7 +28,7 @@ export function PayTab({ st, act }: { st: ParentState; act: Act }) {
   const value = Number(amount || '0')
   const balance = Number(st.wallet.pot)
   const overBalance = value > balance
-  const name = label(st.recipients, to)
+  const name = labelFor(st.recipients, to)
 
   const pay = () => act({
     title: `Pay ${two(amount)} to ${name}`,
