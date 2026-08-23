@@ -345,23 +345,32 @@ export async function predictScopeId(funder: string, spender: string): Promise<s
 /**
  * Write the household's recipient book into scopes' allowlists.
  *
- * The contract holds one allowlist per scope, and treats an empty one as "any
- * recipient" — so turning enforcement off means emptying it, not setting a
- * flag. Because every scope needs the same edit, batching is what makes this
- * one operation instead of one per person: a household of four costs the same
- * fifteen seconds as a household of one.
+ * The contract holds one allowlist per scope and treats an empty one as "any
+ * recipient", so turning enforcement off means emptying the list rather than
+ * setting a flag.
+ *
+ * Allowing and denying are separate calls because `setAllowlist` only writes
+ * the value it is given. Dropping someone from the book therefore has to deny
+ * them explicitly — re-sending the remaining addresses as allowed would leave
+ * the removed one still payable, which is the one direction of drift that
+ * matters: the chain wider than the interface claims.
+ *
+ * Every scope needs the same edit, so they go out together. A household of
+ * four costs the same fifteen seconds as a household of one.
  */
 export function buildAllowlistBatch(
   scopeIds: string[],
-  targets: string[],
-  allowed: boolean,
+  change: { allow?: string[]; deny?: string[] },
 ): Tx[] {
-  if (scopeIds.length === 0 || targets.length === 0) return []
-  return scopeIds.map((id) => ({
+  const call = (id: string, targets: string[], allowed: boolean): Tx => ({
     to: MANAGER,
     value: 0n,
     data: managerIface.encodeFunctionData('setAllowlist', [id, targets, allowed]),
-  }))
+  })
+  return scopeIds.flatMap((id) => [
+    ...(change.allow?.length ? [call(id, change.allow, true)] : []),
+    ...(change.deny?.length ? [call(id, change.deny, false)] : []),
+  ])
 }
 
 /**

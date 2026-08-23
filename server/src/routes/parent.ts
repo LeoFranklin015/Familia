@@ -40,19 +40,13 @@ function activeScopeIds(family: Family): string[] {
 }
 
 /**
- * Bring the on-chain allowlists in line with the recipient book, for the
- * scopes given.
+ * The whole book, as it applies to a scope that has never seen it.
  *
- * Turning enforcement off empties the lists rather than clearing a flag,
- * because the contract reads an empty allowlist as "anyone". These calls are
- * always appended to whatever batch is already going out, so keeping the
- * chain in step with the book never costs an extra operation.
+ * Used when a fresh grant has to inherit the household's rule. Nothing needs
+ * denying: a new scope's allowlist starts empty.
  */
-function allowlistCallsFor(family: Family, scopeIds: string[]) {
-  const targets = family.recipients.map((r) => r.address)
-  return family.allowOnly
-    ? buildAllowlistBatch(scopeIds, targets, true)
-    : buildAllowlistBatch(scopeIds, targets, false)
+function wholeBookFor(family: Family, scopeIds: string[]) {
+  return buildAllowlistBatch(scopeIds, { allow: family.recipients.map((r) => r.address) })
 }
 
 /** Wrap a parent write: authorise, act, and translate auth failures into
@@ -118,7 +112,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
     // briefly wider than the interface says it is.
     if (family.allowOnly && family.recipients.length > 0) {
       const id = await predictScopeId(address, member.address)
-      batch.push(...allowlistCallsFor(family, [id]))
+      batch.push(...wholeBookFor(family, [id]))
     }
 
     const { hash } = await account.sendTransaction(batch)
@@ -189,93 +183,111 @@ parentRoutes.post('/api/pay', (c) =>
 
 /** Add somewhere the household can pay. Naming an address is free and
  *  instant; it only reaches the chain if the book is being enforced. */
-parentRoutes.post('/api/recipients', (c) => {
+parentRoutes.post('/api/recipients', async (c) => {
   const ctx = parentOf(c)
   if (!ctx) return c.json({ error: 'parent only' }, 403)
-  return withRecipientChange(c, ctx.family, async (family) => {
-    const { name, address, kind = 'PERSON' } =
-      await bodyOf<{ name: string; address: string; kind?: 'SHOP' | 'PERSON' }>(c)
-    if (!name?.trim()) return 'Give them a name.'
-    if (!ethers.isAddress(address)) return "That doesn't look like an address."
-    if (family.recipients.some((r) => r.address.toLowerCase() === address.toLowerCase())) {
-      return 'That address is already on the list.'
-    }
-    family.recipients.push({
-      id: randomId(), name: name.trim(), address: ethers.getAddress(address),
+  const { name, address, kind = 'PERSON' } =
+    await bodyOf<{ name: string; address: string; kind?: 'SHOP' | 'PERSON' }>(c)
+
+  if (!name?.trim()) return c.json({ error: 'Give them a name.' }, 400)
+  if (!ethers.isAddress(address)) return c.json({ error: "That doesn't look like an address." }, 400)
+  const canonical = ethers.getAddress(address)
+  if (ctx.family.recipients.some((r) => r.address.toLowerCase() === canonical.toLowerCase())) {
+    return c.json({ error: 'That address is already on the list.' }, 400)
+  }
+
+  return applyBookChange(c, ctx.family, {
+    edit: (f) => f.recipients.push({
+      id: randomId(), name: name.trim(), address: canonical,
       kind: kind === 'SHOP' ? 'SHOP' : 'PERSON',
-    })
-    return null
+    }),
+    // Only the new address needs writing; the rest are already set.
+    change: { allow: [canonical] },
+    note: (f) => `${name.trim()} can be paid — ${f.recipients.length} on the list`,
   })
 })
 
-parentRoutes.post('/api/recipients/:id/remove', (c) => {
+parentRoutes.post('/api/recipients/:id/remove', async (c) => {
   const ctx = parentOf(c)
   if (!ctx) return c.json({ error: 'parent only' }, 403)
-  return withRecipientChange(c, ctx.family, async (family) => {
-    const before = family.recipients.length
-    family.recipients = family.recipients.filter((r) => r.id !== c.req.param('id'))
-    return before === family.recipients.length ? 'That one is not on the list.' : null
+  const gone = ctx.family.recipients.find((r) => r.id === c.req.param('id'))
+  if (!gone) return c.json({ error: 'That one is not on the list.' }, 400)
+
+  return applyBookChange(c, ctx.family, {
+    edit: (f) => { f.recipients = f.recipients.filter((r) => r.id !== gone.id) },
+    // Denying explicitly is the whole point: re-sending the survivors as
+    // allowed would leave this one payable.
+    change: { deny: [gone.address] },
+    note: () => `${gone.name} can no longer be paid`,
   })
 })
 
 /**
  * Turn the book into a rule, or back into a suggestion.
  *
- * This is the one recipient operation that always touches the chain, because
- * it is the one that changes what the contract will accept.
+ * The one recipient operation that always touches the chain, because it is
+ * the one that changes what the contract will accept.
  */
-parentRoutes.post('/api/allowlist', (c) => {
+parentRoutes.post('/api/allowlist', async (c) => {
   const ctx = parentOf(c)
   if (!ctx) return c.json({ error: 'parent only' }, 403)
-  return withRecipientChange(c, ctx.family, async (family) => {
-    const { only } = await bodyOf<{ only: boolean }>(c)
-    family.allowOnly = Boolean(only)
-    return null
-  }, { always: true })
+  const { only } = await bodyOf<{ only: boolean }>(c)
+  const on = Boolean(only)
+  const all = ctx.family.recipients.map((r) => r.address)
+
+  return applyBookChange(c, ctx.family, {
+    edit: (f) => { f.allowOnly = on },
+    // Off means emptying the lists, since the contract reads empty as "anyone".
+    change: on ? { allow: all } : { deny: all },
+    note: (f) => on
+      ? `Only ${f.recipients.length} ${f.recipients.length === 1 ? 'address' : 'addresses'} can be paid now`
+      : 'The family can pay anyone again',
+  })
 })
 
 /**
- * Apply a change to the recipient book, and push it on-chain when that
- * changes what the contract would accept.
+ * Apply a change to the recipient book, pushing it on-chain when that changes
+ * what the contract would accept.
  *
  * Editing the book while it is only a convenience costs nothing and returns
  * immediately. Editing it while it is enforced is a real operation across
- * every active scope — batched into one, so a household of four costs the
- * same as a household of one.
+ * every active scope, batched into one.
+ *
+ * The book is written to disk only once the chain agrees. Saving first would
+ * mean a reverted sync could leave the file claiming a narrower list than the
+ * contract enforces — a guardian believing they had dropped a shop that could
+ * still be paid. Failing with nothing changed is recoverable; that isn't.
  */
-async function withRecipientChange(
+async function applyBookChange(
   c: Context<any, any, any>,
   family: Family,
-  edit: (family: Family) => Promise<string | null>,
-  opts: { always?: boolean } = {},
+  spec: {
+    edit: (family: Family) => void
+    change: { allow?: string[]; deny?: string[] }
+    note: (family: Family) => string
+  },
 ): Promise<Response> {
-  const problem = await edit(family)
-  if (problem) return c.json({ error: problem }, 400)
+  const before = family.allowOnly
+  spec.edit(family)
 
   const scopeIds = activeScopeIds(family)
-  const needsChain = (opts.always || family.allowOnly) && scopeIds.length > 0
+  // Enforcement as it stands either side of the edit: switching it off is
+  // still a write, even though the book ends up unenforced.
+  const enforced = before || family.allowOnly
+  const txs = enforced && scopeIds.length > 0 ? buildAllowlistBatch(scopeIds, spec.change) : []
 
-  if (!needsChain) {
+  if (txs.length === 0) {
     saveFamily(family)
     return c.json({ recipients: family.recipients, allowOnly: family.allowOnly, onchain: false })
   }
 
-  // Save first: the book is what the next on-chain write is computed from, and
-  // a reverted sync should leave something a retry can converge from.
-  saveFamily(family)
   return parentWrite(c, async (account) => {
-    const txs = allowlistCallsFor(family, scopeIds)
-    if (txs.length === 0) return c.json({ recipients: family.recipients, allowOnly: family.allowOnly, onchain: false })
     const { hash } = await account.sendTransaction(txs)
     const result = await waitForUserOp(account, hash)
-    if (!result.success) return c.json({ error: 'Updating the list on-chain failed — try again.' }, 502)
-    record(family.id, {
-      kind: 'allowance',
-      text: family.allowOnly
-        ? `Only ${family.recipients.length} ${family.recipients.length === 1 ? 'address' : 'addresses'} can be paid now`
-        : 'The family can pay anyone again',
-      txHash: result.txHash,
-    })
+    if (!result.success) return c.json({ error: 'Updating the list on-chain failed — nothing changed.' }, 502)
+
+    saveFamily(family)
+    record(family.id, { kind: 'allowance', text: spec.note(family), txHash: result.txHash })
     return c.json({
       recipients: family.recipients, allowOnly: family.allowOnly,
       onchain: true, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs),
@@ -421,9 +433,11 @@ async function buildForAction(family: Family, address: string, body: Record<stri
     case 'allowlist': {
       const scopeIds = activeScopeIds(family)
       if (scopeIds.length === 0) return null
-      // Quote the state being moved to, not the one being left.
-      const targets = family.recipients.map((r) => r.address)
-      return buildAllowlistBatch(scopeIds, targets, Boolean(body.only))
+      // Price the state being moved to, not the one being left. One address or
+      // the whole book costs near enough the same, so a single representative
+      // write is an honest quote for any of these edits.
+      const all = family.recipients.map((r) => r.address)
+      return buildAllowlistBatch(scopeIds, body.only ? { allow: all } : { deny: all })
     }
     default:
       return null
