@@ -1,3 +1,5 @@
+<img src="web/public/icon.png" width="72" alt="">
+
 # Familia
 
 One wallet for everything a household pays for: the kids' pocket money, the
@@ -18,6 +20,13 @@ Tether WDK Track 2 (gasless), on Base Sepolia.
   for twelve months, cancellable instantly.
 - **Fees.** The parent pays in USD₮ through a paymaster in this repo. Kids pay
   nothing. Billers pay their own gas.
+
+## How a payment works
+
+Setup happens once. Everything below the line happens on every payment, and all
+of it is one transaction.
+
+![How a payment flows](web/public/flow-diagram.png)
 
 ## Demo
 
@@ -99,16 +108,6 @@ Account abstraction:
 |---|---|
 | EntryPoint v0.8 | [`0x4337084D…`](https://sepolia.basescan.org/address/0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108) |
 | `Simple7702Account`, eth-infinitism v0.8, unmodified | [`0xd066936D…`](https://sepolia.basescan.org/address/0xd066936D3BbBa7E266572143bd30a9c7894A9EDb) |
-
-A kid's spend redeems the parent's `aUSDT` and pays the merchant in the same
-transaction:
-
-```
-kid ──WDK──▶ manager.spend(id, merchant, 8)
-               │ checks caller, per-tx cap, weekly cap, expiry, allowlist
-               ├─▶ aUSDT.transferFrom(parent → manager, 8)
-               └─▶ pool.withdraw(USD₮, 8, merchant)
-```
 
 The parent keeps custody throughout, since the manager holds tokens inside a
 single `spend` call and never across one. Its allowance is the sum of every live
