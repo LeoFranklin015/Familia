@@ -11,17 +11,17 @@ import {
   managerIface, managerRead, MANAGER, parseUnits, planDeposit, planGuardianPay,
   poolIface, predictScopeId, spentInCurrentPeriod, USDT_PAYMASTER, depositableAmount, type Tx,
 } from '../chain.js'
-import { mustFamily, record, saveFamily, type Family } from '../store.js'
+import { mustFamily, record, updateFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
 import { bootstrapStatus } from '../bootstrap.js'
 
 export const parentRoutes = new Hono()
 
-function parentOf(c: Context<any, any, any>) {
-  const s = currentSession(c)
+async function parentOf(c: Context<any, any, any>) {
+  const s = await currentSession(c)
   if (s?.role !== 'parent') return null
-  return { s, family: mustFamily(s.familyId) }
+  return { s, family: await mustFamily(s.familyId) }
 }
 
 /**
@@ -32,8 +32,8 @@ function parentOf(c: Context<any, any, any>) {
  * is a stale cookie sends you looking in the wrong place. `sessionEnded` also
  * lets the interface act — drop to sign-in rather than report a failure.
  */
-function refuse(c: Context<any, any, any>) {
-  return currentSession(c)
+async function refuse(c: Context<any, any, any>) {
+  return (await currentSession(c))
     ? c.json({ error: 'This account is not the one that set up the household.' }, 403)
     : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
 }
@@ -70,39 +70,20 @@ function wholeBookFor(family: Family, scopeIds: string[]) {
   return buildAllowlistBatch(scopeIds, { allow: family.recipients.map((r) => r.address) })
 }
 
-/**
- * Record the result of an operation against the household as it is *now*.
- *
- * Every write here holds a snapshot for the fifteen to thirty seconds the
- * chain takes, and saving that snapshot afterwards silently discards anything
- * written in between. A child asking to pay during a guardian's grant would
- * lose the ask — erased from the file while the on-chain request lived on, so
- * it could never be approved.
- *
- * Re-reading is cheap (`getFamily` parses from disk every call) and it is the
- * only thing making these routes safe to run concurrently.
- */
-function commit(familyId: string, apply: (family: Family) => void): Family {
-  const fresh = mustFamily(familyId)
-  apply(fresh)
-  saveFamily(fresh)
-  return fresh
-}
-
 /** Wrap a parent write: authorise, act, and translate auth failures into
  *  something the interface can act on. */
 async function parentWrite(
   c: Context<any, any, any>,
   fn: (account: Parameters<Parameters<typeof actAs>[2]>[0], family: Family, address: string) => Promise<Response>,
 ): Promise<Response> {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   try {
     // The parent pays their own fees in USD₮ once they hold some; before that
     // there is nothing to pay with, so the first operation is sponsored.
     const payFeesInUsdt = await canPayFeesInUsdt(ctx.s.address)
-    return await actAs(c, { role: 'parent', payFeesInUsdt }, (account) =>
-      fn(account, mustFamily(ctx.s.familyId), ctx.s.address))
+    return await actAs(c, { role: 'parent', payFeesInUsdt }, async (account) =>
+      fn(account, await mustFamily(ctx.s.familyId), ctx.s.address))
   } catch (e) {
     if (e instanceof AuthError) return c.json({ error: e.message, needsAuth: e.status === 401 }, e.status)
     throw e
@@ -123,10 +104,10 @@ parentRoutes.post('/api/deposit', (c) =>
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: 'Deposit did not go through. Try again.' }, 502)
 
-    commit(family.id, (f) => {
+    await updateFamily(family.id, (f) => {
       f.deposits.push({ amount: String(amount), txHash: result.txHash ?? hash, at: Date.now() })
     })
-    record(family.id, { kind: 'deposit', text: `You added ${amount} to the balance`, amount: String(amount), txHash: result.txHash })
+    await record(family.id, { kind: 'deposit', text: `You added ${amount} to the balance`, amount: String(amount), txHash: result.txHash })
     return c.json({ txHash: result.txHash, userOpHash: hash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
 
@@ -174,7 +155,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
 
     const scopeId = eventArgFromLogs(result.logs, 'Granted', 'id')
     if (!scopeId) return c.json({ error: 'Granted event missing from receipt' }, 500)
-    commit(family.id, (f) => {
+    await updateFamily(family.id, (f) => {
       const m = f.members.find((x) => x.id === member.id)
       if (!m) return
       m.scopeId = scopeId
@@ -185,7 +166,7 @@ parentRoutes.post('/api/members/:id/grant', (c) =>
       }
       m.grantTx = result.txHash
     })
-    record(family.id, {
+    await record(family.id, {
       kind: 'allowance',
       text: `${member.name}'s limits set: ${perTx} a purchase, ${period} a week`,
       memberId: member.id, txHash: result.txHash,
@@ -205,11 +186,11 @@ parentRoutes.post('/api/members/:id/revoke', (c) =>
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: 'Revoke failed. Try again.' }, 502)
 
-    commit(family.id, (f) => {
+    await updateFamily(family.id, (f) => {
       const m = f.members.find((x) => x.id === member.id)
       if (m) m.revoked = true
     })
-    record(family.id, { kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
+    await record(family.id, { kind: 'revoke', text: `${member.name}'s spending turned off`, memberId: member.id, txHash: result.txHash })
     return c.json({ txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs) })
   }))
 
@@ -233,7 +214,7 @@ parentRoutes.post('/api/pay', (c) =>
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
 
-    record(family.id, {
+    await record(family.id, {
       kind: 'payment', text: `You paid ${amount} to ${recipientName(family, to)}`,
       amount: String(amount), txHash: result.txHash,
     })
@@ -243,7 +224,7 @@ parentRoutes.post('/api/pay', (c) =>
 /** Add somewhere the household can pay. Naming an address is free and
  *  instant; it only reaches the chain if the book is being enforced. */
 parentRoutes.post('/api/recipients', async (c) => {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   const { name, address, kind = 'PERSON' } =
     await bodyOf<{ name: string; address: string; kind?: 'SHOP' | 'PERSON' }>(c)
@@ -267,7 +248,7 @@ parentRoutes.post('/api/recipients', async (c) => {
 })
 
 parentRoutes.post('/api/recipients/:id/remove', async (c) => {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   const gone = ctx.family.recipients.find((r) => r.id === c.req.param('id'))
   if (!gone) return c.json({ error: 'That one is not on the list.' }, 400)
@@ -288,7 +269,7 @@ parentRoutes.post('/api/recipients/:id/remove', async (c) => {
  * the one that changes what the contract will accept.
  */
 parentRoutes.post('/api/allowlist', async (c) => {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   const { only } = await bodyOf<{ only: boolean }>(c)
   const on = Boolean(only)
@@ -338,7 +319,7 @@ async function applyBookChange(
   const txs = enforced && scopeIds.length > 0 ? buildAllowlistBatch(scopeIds, spec.change) : []
 
   if (txs.length === 0) {
-    const saved = commit(family.id, spec.edit)
+    const saved = await updateFamily(family.id, spec.edit)
     return c.json({ recipients: saved.recipients, allowOnly: saved.allowOnly, onchain: false })
   }
 
@@ -349,8 +330,8 @@ async function applyBookChange(
 
     // Re-apply to the household as it is now, not the copy held across the
     // wait — see `commit`.
-    const saved = commit(family.id, spec.edit)
-    record(family.id, { kind: 'allowance', text: spec.note(saved), txHash: result.txHash })
+    const saved = await updateFamily(family.id, spec.edit)
+    await record(family.id, { kind: 'allowance', text: spec.note(saved), txHash: result.txHash })
     return c.json({
       recipients: saved.recipients, allowOnly: saved.allowOnly,
       onchain: true, txHash: result.txHash, feeCharged: feeChargedFromLogs(result.logs),
@@ -399,7 +380,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
     // instead of offering a retry that will fail identically. Denying still
     // works — denyRequest doesn't check expiry — so it stays available.
     if (verdict === 'approve' && hasExpired(req)) {
-      commit(family.id, (f) => {
+      await updateFamily(family.id, (f) => {
         const r = f.requests.find((x) => x.requestId === req.requestId)
         if (r) r.status = 'expired'
       })
@@ -414,14 +395,14 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
     const result = await waitForUserOp(account, hash)
     if (!result.success) return c.json({ error: `Could not ${verdict}. Try again.` }, 502)
 
-    commit(family.id, (f) => {
+    await updateFamily(family.id, (f) => {
       const r = f.requests.find((x) => x.requestId === req.requestId)
       if (!r) return
       r.status = verdict === 'approve' ? 'approved' : 'denied'
       r.txHash = result.txHash
     })
     const who = family.members.find((m) => m.id === req.memberId)?.name ?? 'A member'
-    record(family.id, {
+    await record(family.id, {
       kind: verdict === 'approve' ? 'approved' : 'denied',
       text: verdict === 'approve'
         ? `Approved ${who}'s ${req.amount} to ${req.toName}`
@@ -438,7 +419,7 @@ parentRoutes.post('/api/requests/:requestId/:verdict', (c) =>
  * operation without signing it.
  */
 parentRoutes.post('/api/quote', async (c) => {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   const { s, family } = ctx
 
@@ -560,7 +541,7 @@ async function buildForAction(family: Family, address: string, body: Record<stri
 }
 
 parentRoutes.get('/api/state', async (c) => {
-  const ctx = parentOf(c)
+  const ctx = await parentOf(c)
   if (!ctx) return refuse(c)
   const { s, family } = ctx
 

@@ -10,10 +10,11 @@ import { Hono } from 'hono'
 import { setCookie, deleteCookie, getCookie } from 'hono/cookie'
 import { randomUUID } from 'node:crypto'
 import {
-  createFamily, findInvite, getFamily, getVault, mustFamily, newInvite, putVault, saveFamily,
+  createFamily, createSession, destroySession, findInvite, getFamily, getVault,
+  mustFamily, newInvite, putVault, updateFamily,
 } from '../store.js'
 import { createVaultEntry, openVaultEntry, type KeySource } from '../vault.js'
-import { addressForMnemonic, createSession, destroySession } from '../wdk.js'
+import { addressForMnemonic } from '../wdk.js'
 import { bootstrapParent } from '../bootstrap.js'
 import { COOKIE, currentSession } from '../authorize.js'
 
@@ -22,20 +23,22 @@ export const joinRoutes = new Hono()
 joinRoutes.post('/api/family', async (c) => {
   const { name, parentName } = await c.req.json()
   if (!name?.trim() || !parentName?.trim()) return c.json({ error: 'A family name and your name are needed.' }, 400)
-  const { parentJoinToken } = createFamily(name.trim(), parentName.trim())
+  const { parentJoinToken } = await createFamily(name.trim(), parentName.trim())
   return c.json({ joinPath: `/join/${parentJoinToken}` })
 })
 
 joinRoutes.post('/api/invites', async (c) => {
-  const s = currentSession(c)
-  if (s?.role !== 'parent') return c.json({ error: 'parent only' }, 403)
+  const s = await currentSession(c)
+  if (!s) return c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
+  if (s.role !== 'parent') return c.json({ error: 'Only the guardian can invite.' }, 403)
   const { name } = await c.req.json()
   if (!name?.trim()) return c.json({ error: 'A name is needed.' }, 400)
-  return c.json({ joinPath: `/join/${newInvite(mustFamily(s.familyId), name.trim())}` })
+  const token = await newInvite(await mustFamily(s.familyId), name.trim())
+  return c.json({ joinPath: `/join/${token}` })
 })
 
-joinRoutes.get('/api/join/:token', (c) => {
-  const found = findInvite(c.req.param('token'))
+joinRoutes.get('/api/join/:token', async (c) => {
+  const found = await findInvite(c.req.param('token'))
   if (!found) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
   return c.json({
     familyName: found.family.name,
@@ -45,13 +48,13 @@ joinRoutes.get('/api/join/:token', (c) => {
 })
 
 joinRoutes.post('/api/join/:token', async (c) => {
-  const found = findInvite(c.req.param('token'))
+  const found = await findInvite(c.req.param('token'))
   if (!found) return c.json({ error: 'This invite link was already used or does not exist.' }, 404)
   const { family, invite } = found
 
   const body = (await c.req.json()) as KeySource & { credentialId?: string }
   const credentialId = body.credentialId ?? `pass:${randomUUID()}`
-  if (getVault(credentialId)) return c.json({ error: 'That passkey is already in use.' }, 409)
+  if (await getVault(credentialId)) return c.json({ error: 'That passkey is already in use.' }, 409)
 
   // Entropy is generated and encrypted here, then only the ciphertext is kept.
   const { mnemonic, ciphertextHex, saltHex } = await createVaultEntry(body)
@@ -60,18 +63,22 @@ joinRoutes.post('/api/join/:token', async (c) => {
   const isParent = invite.token === family.parentInviteToken && !family.parent
   const memberId = isParent ? undefined : randomUUID()
 
-  putVault({
+  await putVault({
     credentialId, ciphertextHex, saltHex, prf: Boolean(body.prfKeyHex),
     familyId: family.id, role: isParent ? 'parent' : 'member', memberId,
     address, name: invite.name,
   })
 
-  if (isParent) family.parent = { name: invite.name, address, credentialId }
-  else family.members.push({ id: memberId!, name: invite.name, address, credentialId, joinedAt: Date.now() })
-  invite.usedBy = address
-  saveFamily(family)
+  // Atomic, because two people can open their invite links at the same moment
+  // and a whole-document overwrite would drop one of them.
+  await updateFamily(family.id, (f) => {
+    if (isParent) f.parent = { name: invite.name, address, credentialId }
+    else f.members.push({ id: memberId!, name: invite.name, address, credentialId, joinedAt: Date.now() })
+    const i = f.invites.find((x) => x.token === invite.token)
+    if (i) i.usedBy = address
+  })
 
-  const session = createSession({
+  const session = await createSession({
     familyId: family.id, role: isParent ? 'parent' : 'member', memberId,
     credentialId, address, name: invite.name,
   })
@@ -87,7 +94,7 @@ joinRoutes.post('/api/join/:token', async (c) => {
 
 joinRoutes.post('/api/session', async (c) => {
   const body = (await c.req.json()) as KeySource & { credentialId: string }
-  const vault = getVault(body.credentialId)
+  const vault = await getVault(body.credentialId)
   if (!vault) return c.json({ error: 'No account for this passkey.' }, 404)
 
   // Unlocking proves the key works before a session is handed out; the
@@ -98,10 +105,10 @@ joinRoutes.post('/api/session', async (c) => {
     return c.json({ error: 'Could not unlock. Wrong key or passphrase.' }, 401)
   }
 
-  const family = getFamily(vault.familyId)
+  const family = await getFamily(vault.familyId)
   if (!family) return c.json({ error: 'That family no longer exists.' }, 404)
 
-  const session = createSession({
+  const session = await createSession({
     familyId: vault.familyId, role: vault.role, memberId: vault.memberId,
     credentialId: vault.credentialId, address: vault.address, name: vault.name,
   })
@@ -109,17 +116,17 @@ joinRoutes.post('/api/session', async (c) => {
   return c.json({ role: session.role, address: vault.address, familyName: family.name })
 })
 
-joinRoutes.post('/api/logout', (c) => {
+joinRoutes.post('/api/logout', async (c) => {
   const id = getCookie(c, COOKIE)
-  if (id) destroySession(id)
+  if (id) await destroySession(id)
   deleteCookie(c, COOKIE)
   return c.json({ ok: true })
 })
 
-joinRoutes.get('/api/whoami', (c) => {
-  const s = currentSession(c)
+joinRoutes.get('/api/whoami', async (c) => {
+  const s = await currentSession(c)
   if (!s) return c.json({ role: null })
-  const family = getFamily(s.familyId)
+  const family = await getFamily(s.familyId)
   return c.json({
     role: s.role,
     address: s.address,

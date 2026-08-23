@@ -6,13 +6,13 @@
 // away. Nothing durable in this process can sign on the user's behalf.
 import type { Context } from 'hono'
 import { getCookie } from 'hono/cookie'
-import { getVault, type Vault } from './store.js'
+import { getSession, getVault, type Session, type Vault } from './store.js'
 import { openVaultEntry, type KeySource } from './vault.js'
-import { getSession, withAccount, type GaslessAccount, type Session } from './wdk.js'
+import { withAccount, type GaslessAccount } from './wdk.js'
 
 export const COOKIE = 'kin_session'
 
-export function currentSession(c: Context<any, any, any>): Session | undefined {
+export function currentSession(c: Context<any, any, any>): Promise<Session | undefined> {
   return getSession(getCookie(c, COOKIE))
 }
 
@@ -40,7 +40,7 @@ export async function actAs<T>(
   opts: { role?: 'parent' | 'member'; payFeesInUsdt?: boolean },
   fn: (account: GaslessAccount, vault: Vault) => Promise<T>,
 ): Promise<T> {
-  const session = currentSession(c)
+  const session = await currentSession(c)
   if (!session) throw new AuthError('Your session has ended. Sign in again.')
   if (opts.role && session.role !== opts.role) throw new AuthError(`${opts.role} only`, 403)
 
@@ -55,7 +55,7 @@ export async function actAs<T>(
     throw new AuthError('That passkey belongs to a different account.', 403)
   }
 
-  const vault = getVault(credentialId)
+  const vault = await getVault(credentialId)
   if (!vault) throw new AuthError('No account for that passkey.')
   if (vault.familyId !== session.familyId) throw new AuthError('Wrong family for that account.', 403)
 

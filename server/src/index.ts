@@ -6,6 +6,7 @@ import { joinRoutes } from './routes/join.js'
 import { parentRoutes } from './routes/parent.js'
 import { memberRoutes } from './routes/member.js'
 import { paymasterService } from './paymaster-service.js'
+import { openStore } from './store.js'
 
 mkdirSync(new URL('../data', import.meta.url).pathname, { recursive: true })
 
@@ -68,4 +69,8 @@ app.get(
 )
 
 const port = Number(process.env.PORT ?? 8787)
-serve({ fetch: app.fetch, port }, () => console.log(`kin server on :${port}`))
+
+// Open storage before listening. A bad connection string should stop the
+// server here, not surface halfway through someone's first payment.
+const where = await openStore()
+serve({ fetch: app.fetch, port }, () => console.log(`kin server on :${port}  ·  storage: ${where}`))

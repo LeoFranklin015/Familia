@@ -3,9 +3,6 @@
 import WDK from '@tetherto/wdk'
 import WalletManagerEvm7702Gasless, { WalletAccountReadOnlyEvm7702Gasless } from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { randomBytes } from 'node:crypto'
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import {
   AAVE, BUNDLER_URL, DELEGATION_ADDRESS, MANAGER, PAYMASTER_SERVICE_URL, POLICY_ID, RPC_URL, USDT_PAYMASTER,
 } from './chain.js'
@@ -173,91 +170,6 @@ function normalizeLogs(logs: unknown): Log[] {
 // the length of one operation and disposed in a finally block, so the window
 // in which this process could sign anything is a single request rather than a
 // 45-minute session.
-export type Session = {
-  id: string
-  familyId: string
-  role: 'parent' | 'member'
-  memberId?: string
-  credentialId: string
-  address: string
-  name: string
-  expiresAt: number
-}
-
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000 // identity only; grants no spending
-
-/**
- * Sessions, kept across restarts.
- *
- * They were a plain in-memory Map, which meant every deploy silently signed
- * everyone out — and the next write came back "parent only", because the
- * cookie named a session that no longer existed. A confusing way to be told
- * the server had restarted.
- *
- * Safe to write down: a session carries identity and nothing else. No key
- * material, no entropy, no ability to sign — every write still has to present
- * a passkey or passphrase at the moment it happens, which is the whole point
- * of the per-action model. The worst a stolen session file grants is the
- * ability to *read* a household, which is why it is written 0600 alongside
- * the vaults rather than beside the family records.
- */
-const SESSIONS_FILE = join(dirname(fileURLToPath(import.meta.url)), '../data/sessions.json')
-
-const sessions = new Map<string, Session>(load())
-
-function load(): Array<[string, Session]> {
-  try {
-    const raw = JSON.parse(readFileSync(SESSIONS_FILE, 'utf8')) as Session[]
-    const now = Date.now()
-    return raw.filter((s) => s.expiresAt > now).map((s) => [s.id, s])
-  } catch {
-    return [] // no file yet, or unreadable — start empty
-  }
-}
-
-let saveQueued = false
-/** Debounced: `getSession` slides the expiry on every request, and this must
- *  not turn each read into a synchronous write. */
-function save() {
-  if (saveQueued) return
-  saveQueued = true
-  setTimeout(() => {
-    saveQueued = false
-    try {
-      const tmp = `${SESSIONS_FILE}.tmp`
-      writeFileSync(tmp, JSON.stringify([...sessions.values()]), { mode: 0o600 })
-      renameSync(tmp, SESSIONS_FILE)
-    } catch { /* a lost session file costs a sign-in, not data */ }
-  }, 1000).unref()
-}
-
-export function createSession(v: {
-  familyId: string; role: 'parent' | 'member'; memberId?: string
-  credentialId: string; address: string; name: string
-}): Session {
-  const session: Session = { ...v, id: randomBytes(24).toString('hex'), expiresAt: Date.now() + SESSION_TTL_MS }
-  sessions.set(session.id, session)
-  save()
-  return session
-}
-
-export function getSession(id: string | undefined): Session | undefined {
-  if (!id) return undefined
-  const s = sessions.get(id)
-  if (!s) return undefined
-  if (Date.now() > s.expiresAt) { sessions.delete(id); save(); return undefined }
-  s.expiresAt = Date.now() + SESSION_TTL_MS
-  save()
-  return s
-}
-
-export function destroySession(id: string) { sessions.delete(id); save() }
-
-setInterval(() => {
-  let dropped = false
-  for (const [id, s] of sessions) if (Date.now() > s.expiresAt) { sessions.delete(id); dropped = true }
-  if (dropped) save()
-}, 60_000).unref()
 
 /**
  * Run one operation with a live signing account, then destroy it.

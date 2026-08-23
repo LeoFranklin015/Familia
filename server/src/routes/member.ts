@@ -9,7 +9,7 @@ import {
   AAVE, eventArgFromLogs, formatUnits, humanizeManagerRevert,
   managerIface, managerRead, MANAGER, parseUnits, spentInCurrentPeriod,
 } from '../chain.js'
-import { mustFamily, record, saveFamily, type Family } from '../store.js'
+import { mustFamily, record, updateFamily, type Family } from '../store.js'
 import { waitForUserOp } from '../wdk.js'
 import { actAs, AuthError, bodyOf, currentSession } from '../authorize.js'
 
@@ -25,22 +25,22 @@ function payeeName(family: Family, address: string): string {
 }
 
 /** Same as the parent side: a stale cookie is not a role error. */
-function refuse(c: Context<any, any, any>) {
-  return currentSession(c)
+async function refuse(c: Context<any, any, any>) {
+  return (await currentSession(c))
     ? c.json({ error: 'This account cannot spend from that household.' }, 403)
     : c.json({ error: 'Your session has ended. Sign in again.', sessionEnded: true }, 401)
 }
 
-function memberOf(c: Context<any, any, any>) {
-  const s = currentSession(c)
+async function memberOf(c: Context<any, any, any>) {
+  const s = await currentSession(c)
   if (s?.role !== 'member' || !s.memberId) return null
-  const family = mustFamily(s.familyId)
+  const family = await mustFamily(s.familyId)
   const member = family.members.find((m) => m.id === s.memberId)
   return member ? { s, family, member } : null
 }
 
 memberRoutes.get('/api/me', async (c) => {
-  const ctx = memberOf(c)
+  const ctx = await memberOf(c)
   if (!ctx) return refuse(c)
   const { family, member } = ctx
 
@@ -83,7 +83,7 @@ memberRoutes.get('/api/me', async (c) => {
 })
 
 memberRoutes.post('/api/spend', async (c) => {
-  const ctx = memberOf(c)
+  const ctx = await memberOf(c)
   if (!ctx) return refuse(c)
   const { family, member } = ctx
   if (!member.scopeId) return c.json({ error: 'You have no spending allowance yet. Ask a parent.' }, 409)
@@ -113,7 +113,7 @@ memberRoutes.post('/api/spend', async (c) => {
           })
           const result = await waitForUserOp(account, hash)
           if (!result.success) return c.json({ error: 'The payment reverted on-chain. Nothing was spent.' }, 502)
-          record(family.id, {
+          await record(family.id, {
             kind: 'payment', text: `${member.name} paid ${amount} to ${payeeName(family, to)}`,
             amount: String(amount), memberId: member.id, txHash: result.txHash,
           })
@@ -135,13 +135,15 @@ memberRoutes.post('/api/spend', async (c) => {
       const requestId = eventArgFromLogs(result.logs, 'SpendRequested', 'requestId')
       if (!requestId) return c.json({ error: 'SpendRequested event missing from receipt' }, 500)
 
-      const f = mustFamily(family.id)
-      f.requests.push({
-        requestId, memberId: member.id, to, toName: payeeName(family, to),
-        amount: String(amount), status: 'pending', createdAt: Date.now(), txHash: result.txHash,
+      // Atomic: a guardian may well be mid-grant on the other phone, and a
+      // whole-document overwrite here would erase whatever they just wrote.
+      await updateFamily(family.id, (f) => {
+        f.requests.push({
+          requestId, memberId: member.id, to, toName: payeeName(family, to),
+          amount: String(amount), status: 'pending', createdAt: Date.now(), txHash: result.txHash,
+        })
       })
-      saveFamily(f)
-      record(family.id, {
+      await record(family.id, {
         kind: 'ask', text: `${member.name} asked to pay ${amount} to ${payeeName(family, to)}`,
         amount: String(amount), memberId: member.id, txHash: result.txHash,
       })
