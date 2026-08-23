@@ -32,6 +32,11 @@ export function PayTab({ st, act }: { st: ParentState; act: Act }) {
 
   const pay = () => act({
     title: `Pay ${two(amount)} to ${name}`,
+    detail: [
+      { label: 'Amount', value: `${two(amount)} ${st.symbol}` },
+      { label: 'To', value: name },
+      { label: 'Comes from', value: 'Your Aave position' },
+    ],
     steps: ['Take it out of Aave', `Send it to ${name}`],
     quote: { action: 'pay', to: to.trim(), amount },
     call: async (auth) => {

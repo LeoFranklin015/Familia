@@ -62,6 +62,18 @@ export function SubsTab({
   const subscribe = (service: Service) =>
     act({
       title: `Subscribe to ${service.name}`,
+      // What is actually being signed. A mandate outlives the tap, so the
+      // sheet names every bound before asking for a face.
+      detail: [
+        { label: 'Each charge', value: `${two(service.price)} ${st.symbol}` },
+        { label: 'How often', value: `Once every ${st.terms.periodDays} days` },
+        { label: 'For how long', value: `${st.terms.termMonths} months` },
+        {
+          label: 'Most in total',
+          value: `${two(String(Number(service.price) * st.terms.termMonths))} ${st.symbol}`,
+        },
+        { label: 'Only to', value: shortAddress(service.payTo) },
+      ],
       steps: [
         `Let ${service.name} take ${service.price} a month`,
         `For ${st.terms.termMonths} months, then it stops`,
@@ -73,6 +85,11 @@ export function SubsTab({
   const cancel = (sub: Subscription) =>
     act({
       title: `Cancel ${sub.name}`,
+      detail: [
+        { label: 'Stops', value: `${two(sub.price)} ${st.symbol} every ${sub.periodDays} days` },
+        { label: 'Charges avoided', value: String(Math.max(0, sub.termMonths - sub.taken)) },
+        { label: 'Takes effect', value: 'Immediately, on-chain' },
+      ],
       steps: ['Revoke the mandate on-chain'],
       quote: { action: 'unsubscribe', subscriptionId: sub.id },
       call: (auth) => api.post(`/api/subscriptions/${sub.id}/cancel`, { auth }),

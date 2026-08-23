@@ -6,16 +6,25 @@ import { useDialog } from './useDialog'
  *
  * Every write in this app authorises itself — sessions hold no key, so a
  * signature is re-derived from the person's face at the moment they act. That
- * makes this sheet the honest place to name two things: what is about to
- * happen, and what it will cost at most.
+ * makes this sheet the honest place to name three things: what is about to
+ * happen, the terms being agreed to, and what it will cost at most.
+ *
+ * The terms matter most where the action outlives the tap. Granting a
+ * subscription authorises twelve charges over a year, and a sheet that showed
+ * only a gas fee was asking for a signature on something it had not named.
  *
  * "At most" matters. The paymaster quotes a ceiling and charges the real cost
  * afterwards, so promising an exact figure here would be a small lie that the
  * receipt would then contradict.
  */
+/** One line of what is being agreed to. */
+export type Term = { label: string; value: string }
+
 export type Pending = {
   /** What is about to happen, in the person's own terms. */
   title: string
+  /** The terms of the thing being signed, above the fee. */
+  detail?: Term[]
   /** The quoted ceiling, already formatted, or null while it is being fetched. */
   fee: string | null
   /** The quote failed. Signing is still possible; the ceiling just isn't known. */
@@ -31,7 +40,7 @@ export type Pending = {
 export function Confirm({ pending, onCancel }: { pending: Pending | null; onCancel: () => void }) {
   const panel = useDialog<HTMLDivElement>(Boolean(pending), onCancel)
   if (!pending) return null
-  const { title, fee, symbol, covered, blocked, feeUnknown } = pending
+  const { title, detail, fee, symbol, covered, blocked, feeUnknown } = pending
 
   return (
     <div className="veil veil--auth" onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}>
@@ -41,6 +50,12 @@ export function Confirm({ pending, onCancel }: { pending: Pending | null; onCanc
         <div className="sheet__title mt2" style={{ marginBottom: 14 }}>{title}</div>
 
         <dl className="dl">
+          {detail?.map((d) => (
+            <div key={d.label} className="dl__row">
+              <dt>{d.label}</dt>
+              <dd>{d.value}</dd>
+            </div>
+          ))}
           <div className="dl__row dl__row--edge">
             <dt>{covered ? 'Network fee' : 'Fee, at most'}</dt>
             <dd>

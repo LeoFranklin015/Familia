@@ -10,6 +10,17 @@ export function Ask({ r, act }: { r: ParentState['pendingRequests'][number]; act
     title: verdict === 'approve'
       ? `Pay ${r.amount} to ${r.toName} for ${r.memberName}`
       : `Turn down ${r.memberName}'s ${r.amount}`,
+    detail: verdict === 'approve'
+      ? [
+          { label: 'Amount', value: r.amount },
+          { label: 'To', value: r.toName },
+          { label: 'For', value: r.memberName },
+          ...(r.offList ? [{ label: 'Note', value: 'Outside their places' }] : []),
+        ]
+      : [
+          { label: 'Turning down', value: `${r.amount} to ${r.toName}` },
+          { label: 'Nothing moves', value: 'The ask is closed on-chain' },
+        ],
     steps: verdict === 'approve'
       ? ['Take it out of Aave', `Send it to ${r.toName}`]
       : ['Turn down the ask on-chain'],

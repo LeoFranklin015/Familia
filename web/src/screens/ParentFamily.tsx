@@ -158,13 +158,20 @@ export function FamilyTab({
                   Where {person.name} can pay
                 </button>
               )}
-              {person.caps && !person.revoked && (
+              {/* Bound outside the handler: the JSX guard narrows `caps` here,
+                  but not inside a closure that runs later. */}
+              {person.caps && !person.revoked && ((caps) => (
                 <button
                   className="btn btn--accent tap"
                   onClick={() => {
                     setSheet(null)
                     act({
                       title: `Turn off spending for ${person.name}`,
+                      detail: [
+                        { label: 'Stops', value: `${two(caps.perTx)} a purchase` },
+                        { label: 'Frees up', value: `${two(caps.period)} ${st.symbol} a week` },
+                        { label: 'Takes effect', value: 'Immediately, on-chain' },
+                      ],
                       steps: ['Cancel the permission on-chain'],
                       quote: { action: 'revoke', memberId: person.id },
                       call: (auth) => api.post(`/api/members/${person.id}/revoke`, { auth }),
@@ -173,7 +180,7 @@ export function FamilyTab({
                 >
                   Turn off spending
                 </button>
-              )}
+              ))(person.caps)}
             </div>
           </>
         )}
@@ -192,6 +199,11 @@ export function FamilyTab({
             setSheet(null)
             act({
               title: `Let ${person.name} spend ${two(perTx)} a purchase`,
+              detail: [
+                { label: 'Each purchase', value: `${two(perTx)} ${st.symbol} at most` },
+                { label: 'Each week', value: `${two(period)} ${st.symbol} at most` },
+                { label: 'Where', value: person.allowOnly ? `${person.allowed.length} places` : 'Anywhere' },
+              ],
               steps: ['Write the limit on-chain'],
               quote: { action: 'grant', memberId: person.id, perTx, period },
               call: (auth) => api.post(`/api/members/${person.id}/grant`, { perTx, period, auth }),
@@ -215,6 +227,12 @@ export function FamilyTab({
               title: only
                 ? `Let ${person.name} pay ${allowed.length} ${allowed.length === 1 ? 'place' : 'places'}`
                 : `Let ${person.name} pay anyone`,
+              detail: only
+                ? [
+                    { label: 'Can pay', value: `${allowed.length} ${allowed.length === 1 ? 'place' : 'places'}` },
+                    { label: 'Anywhere else', value: 'Refused by the contract' },
+                  ]
+                : [{ label: 'Can pay', value: 'Any address, within their limit' }],
               steps: ['Write the list on-chain'],
               quote: { action: 'allowlist', memberId: person.id, only, allowed },
               call: (auth) => api.post(`/api/members/${person.id}/allowlist`, { only, allowed, auth }),

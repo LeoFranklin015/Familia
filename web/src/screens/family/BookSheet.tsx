@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api, type ParentState, type Recipient } from '../../api'
 import { Sheet } from '../../components/Sheet'
 import { Icon } from '../../components/ui'
+import { shortAddress } from '../../lib/address'
 import { RecipientRow } from './rows'
 import type { Act } from '../Parent'
 
@@ -57,6 +58,11 @@ export function BookSheet({
     onClose()
     act({
       title: `Remove ${r.name}`,
+      detail: [
+        { label: 'Address', value: shortAddress(r.address) },
+        { label: 'Comes off', value: `${holders.length} ${holders.length === 1 ? 'list' : 'lists'}` },
+        { label: 'Who is affected', value: holders.map((m) => m.name).join(', ') },
+      ],
       steps: [`Take it off ${holders.length} ${holders.length === 1 ? 'list' : 'lists'} on-chain`],
       call: (auth) => api.post(`/api/recipients/${r.id}/remove`, { auth }),
     })

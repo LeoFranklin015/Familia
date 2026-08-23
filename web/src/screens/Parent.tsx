@@ -7,7 +7,7 @@ import { PassphraseSheet } from '../components/PassphraseSheet'
 import { TabBar, type Tab } from '../components/TabBar'
 import { Sheet } from '../components/Sheet'
 import { AccountSheet } from '../components/Account'
-import { Confirm } from '../components/Confirm'
+import { Confirm, type Term } from '../components/Confirm'
 import { OpModal, type Op } from '../components/Op'
 import { ScreenSkeleton } from '../components/ui'
 import { two } from '../lib/money'
@@ -40,6 +40,8 @@ const tabsFor = (waiting: number): ReadonlyArray<Tab<TabId>> => [
 type Spec = {
   /** What the confirmation sheet says is about to happen. */
   title: string
+  /** The terms being agreed to, shown before the signature is asked for. */
+  detail?: Term[]
   /** What the operation does, if the quote can't say. */
   steps: string[]
   /** Body for /api/quote, so the price shown is for this exact batch. */
@@ -155,7 +157,7 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
       }
     }
 
-    ask({ title: spec.title, fee: null, symbol }, run)
+    ask({ title: spec.title, detail: spec.detail, fee: null, symbol }, run)
 
     // Nothing to price against means we genuinely don't know, and "0" would
     // be a claim rather than an absence. Every caller quotes today; this is
@@ -247,6 +249,11 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
           setSheet(null)
           act({
             title: `Move ${two(amount)} ${st.symbol} into Aave`,
+            detail: [
+              { label: 'Amount', value: `${two(amount)} ${st.symbol}` },
+              { label: 'Goes to', value: 'Aave V3, in your own account' },
+              { label: 'Custody', value: 'Stays yours' },
+            ],
             steps: ['Move it into Aave'],
             quote: { action: 'deposit', amount },
             call: (auth) => api.post('/api/deposit', { amount, auth }),
