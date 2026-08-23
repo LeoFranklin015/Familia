@@ -78,14 +78,25 @@ async function readSubscription(s: import('../../store.js').Subscription) {
   const service = serviceById(s.serviceId)
   let left = '0'
   let renewsAt = 0
+  let endsAt = 0
+  let termMonths = 0
 
   if (s.scopeId && !s.revoked) {
-    const [spendable, resets] = await Promise.all([
+    const [spendable, resets, scope] = await Promise.all([
       managerRead.spendable(s.scopeId) as Promise<bigint>,
       managerRead.periodResetsAt(s.scopeId) as Promise<bigint>,
+      managerRead.getScope(s.scopeId),
     ])
     left = formatUnits(spendable)
     renewsAt = Number(resets)
+    // The term comes off the scope, not out of our record. Ours was computed
+    // from this server's clock before the block was mined, and a scope granted
+    // before the app set an expiry at all has none — reporting a constant here
+    // would let the screen claim an end date the contract does not enforce.
+    endsAt = Number(scope.expiry)
+    termMonths = endsAt === 0
+      ? 0
+      : Math.floor((endsAt - Number(scope.grantedAt)) / Number(scope.periodLength)) + 1
   }
 
   return {
@@ -105,10 +116,10 @@ async function readSubscription(s: import('../../store.js').Subscription) {
     dueNow: Number(left) > 0,
     renewsAt,
     periodDays: Math.round(MONTH_SECONDS / 86400),
-    // The term. `endsAt` is the scope's own expiry, after which the contract
-    // refuses a collection whether or not anyone cancelled.
-    endsAt: s.endsAt ?? 0,
-    termMonths: TERM_MONTHS,
+    // The scope's own expiry, after which the contract refuses a collection
+    // whether or not anyone cancelled. Zero means it never lapses.
+    endsAt,
+    termMonths,
     taken: s.charges.length,
   }
 }

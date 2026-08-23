@@ -147,7 +147,10 @@ export function SubsTab({
                     <span className="recipient__name">{sub.name}</span>
                     <span className="recipient__addr">
                       {two(sub.price)} {st.symbol} every {sub.periodDays} days
-                      {' · '}{sub.taken} of {sub.termMonths} taken
+                      {' · '}
+                      {sub.termMonths
+                        ? `${sub.taken} of ${sub.termMonths} taken`
+                        : `${sub.taken} taken`}
                     </span>
                   </div>
                   <button className="link tap link--sm" onClick={() => cancel(sub)}>Cancel</button>
@@ -201,15 +204,23 @@ export function SubsTab({
                   <dl className="dl">
                     <Row label="Most per charge" value={`${two(sub.price)} ${st.symbol}`} />
                     <Row label="How often" value={`Once every ${sub.periodDays} days`} />
+                    {/* A scope with no expiry says so, rather than borrowing
+                        the term the app grants today. */}
                     <Row
                       label="For how long"
-                      value={`${sub.termMonths} months, ending ${sub.endsAt ? when(sub.endsAt * 1000) : 'once granted'}`}
+                      value={sub.endsAt
+                        ? `${sub.termMonths} months, ending ${when(sub.endsAt * 1000)}`
+                        : 'Until you cancel it'}
                     />
-                    <Row
-                      label="Most it can ever take"
-                      value={`${two(String(Number(sub.price) * sub.termMonths))} ${st.symbol}`}
-                    />
-                    <Row label="Payments left" value={String(Math.max(0, sub.termMonths - sub.taken))} />
+                    {sub.termMonths > 0 && (
+                      <>
+                        <Row
+                          label="Most it can ever take"
+                          value={`${two(String(Number(sub.price) * sub.termMonths))} ${st.symbol}`}
+                        />
+                        <Row label="Payments left" value={String(Math.max(0, sub.termMonths - sub.taken))} />
+                      </>
+                    )}
                     <Row label="Only to" value={shortAddress(sub.payTo)} />
                     <Row
                       label="Taken so far"
@@ -229,9 +240,9 @@ export function SubsTab({
                     <p className="hint mt2">
                       These are the scope&rsquo;s own caps and its expiry, read back
                       from the contract. Nothing here is a setting in this app, so
-                      nothing here can be widened by {sub.name} or by us. After
-                      {' '}{sub.termMonths} months the contract refuses it whether or
-                      not anyone remembered to cancel.
+                      nothing here can be widened by {sub.name} or by us.
+                      {sub.termMonths > 0 && ` After ${sub.termMonths} months the contract
+                      refuses it whether or not anyone remembered to cancel.`}
                     </p>
                   </dl>
                 )}
