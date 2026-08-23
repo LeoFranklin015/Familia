@@ -3,17 +3,43 @@ import { api, type FeeQuote, type ParentState } from '../api'
 import { approve, knownCredentialId, NeedsPassphrase, post, type Approval } from '../auth'
 import { TopBar } from '../App'
 import { Sheet } from '../components/Sheet'
-import { Empty, Icon, Money, ScreenSkeleton } from '../components/ui'
+import { Progress, type Job } from '../components/Progress'
+import { Empty, Icon, ScreenSkeleton } from '../components/ui'
 
 type Tab = 'pot' | 'family' | 'activity'
+type Member = ParentState['members'][number]
+
+/** Explanations live here, behind an (i), so no screen carries a paragraph. */
+const NOTES = {
+  pot: {
+    title: 'Where the money sits',
+    body: [
+      'The pot is supplied to Aave and held as aUSD₮ in your own account. Nobody takes custody of it — not us, not the app.',
+      'When someone spends, their allowance redeems from that position and pays the shop in the same transaction.',
+    ],
+  },
+  fees: {
+    title: 'Who pays for what',
+    body: [
+      'You pay your own network fees in USD₮ — never ETH, and you never hold a native token.',
+      'Everyone you invite is sponsored. They pay nothing, ever, and need no balance of any kind to spend.',
+    ],
+  },
+  committed: {
+    title: 'Committed to the family',
+    body: [
+      'The total of everyone’s weekly limits. The spend manager is approved for exactly this amount — never more, and never unlimited.',
+      'It drops the moment you turn someone off.',
+    ],
+  },
+} as const
 
 export default function Parent({ onLogout }: { onLogout: () => void }) {
   const [st, setSt] = useState<ParentState | null>(null)
   const [tab, setTab] = useState<Tab>('pot')
-  const [note, setNote] = useState<{ kind: 'ok' | 'err' | 'wait'; text: string } | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-  // A write blocked on a passphrase, held until the sheet answers.
-  const [pending, setPending] = useState<{ key: string; ok: string; call: (a: Approval) => Promise<unknown> } | null>(null)
+  const [job, setJob] = useState<Job | null>(null)
+  const [note, setNote] = useState<keyof typeof NOTES | null>(null)
+  const [pending, setPending] = useState<{ run: (a: Approval) => void } | null>(null)
   const [passphrase, setPassphrase] = useState('')
 
   const load = () => api.get<ParentState>('/api/state').then(setSt).catch(() => {})
@@ -24,379 +50,335 @@ export default function Parent({ onLogout }: { onLogout: () => void }) {
   }, [])
 
   if (!st) {
-    return (
-      <div className="app">
-        <TopBar who="" onLogout={onLogout} />
-        <ScreenSkeleton label="Loading your family" />
-      </div>
-    )
+    return <div className="app"><TopBar who="" onLogout={onLogout} /><ScreenSkeleton label="Loading" /></div>
   }
 
   /**
-   * Every parent write asks for the key at the moment it happens. These are the
-   * operations with no on-chain ceiling behind them — approving a request
-   * deliberately bypasses the caps — so the person is the only guard, and they
-   * should be asked each time rather than once an hour.
+   * Every parent write: approve, then watch it happen in its own surface.
+   * These operations have no on-chain ceiling behind them, so the person is
+   * the only guard and is asked each time.
    */
-  const run = async (key: string, call: (auth: Approval) => Promise<unknown>, okText: string, auth?: Approval) => {
-    let approval = auth
-    if (!approval) {
+  const act = (
+    title: string,
+    call: (auth: Approval) => Promise<{ feeCharged?: string | null; txHash?: string }>,
+    done: string,
+    auth?: Approval,
+  ) => {
+    const go = async (approval: Approval) => {
+      setJob({ state: 'running', title, note: 'Signing and sending to the network.' })
       try {
-        approval = await approve()
+        const res = await call(approval)
+        setJob({ state: 'done', title, note: done, fee: res?.feeCharged, symbol: st.symbol, txHash: res?.txHash })
+        await load()
       } catch (e) {
-        if (e instanceof NeedsPassphrase) { setPending({ key, ok: okText, call }); return }
-        setNote({ kind: 'err', text: 'Approval was cancelled.' })
-        return
+        setJob({ state: 'failed', title, reason: e instanceof Error ? e.message : 'Something went wrong.' })
       }
     }
-    setBusy(key)
-    setNote({ kind: 'wait', text: 'Sending — a few seconds.' })
-    try {
-      const res = (await call(approval)) as { feeCharged?: string | null } | undefined
-      const charged = res?.feeCharged
-      setNote({ kind: 'ok', text: charged ? `${okText} Network fee: ${charged} ${st.symbol}.` : okText })
-      await load()
-    } catch (e) {
-      setNote({ kind: 'err', text: e instanceof Error ? e.message : 'Something went wrong.' })
-    } finally {
-      setBusy(null)
-    }
+    if (auth) { void go(auth); return }
+    approve().then(go).catch((e) => {
+      if (e instanceof NeedsPassphrase) { setPending({ run: go }); return }
+      setJob({ state: 'failed', title, reason: 'Approval was cancelled.' })
+    })
   }
 
-  const runWithPassphrase = () => {
+  const withPassphrase = () => {
     const credentialId = knownCredentialId()
     const job = pending
-    setPending(null)
     const pass = passphrase
-    setPassphrase('')
-    if (!credentialId || !job) { setNote({ kind: 'err', text: 'No account on this device.' }); return }
-    run(job.key, job.call, job.ok, { credentialId, passphrase: pass })
+    setPending(null); setPassphrase('')
+    if (credentialId && job) job.run({ credentialId, passphrase: pass })
   }
 
-  const verdict = (rid: string, v: 'approve' | 'deny') =>
-    run(`req:${rid}`, (auth) => post(`/api/requests/${rid}/${v}`, {}, auth),
-      v === 'approve' ? 'Approved and paid.' : 'Declined.')
-
   const asks = st.pendingRequests
+  const funding = st.wallet.setup.status === 'running'
 
   return (
     <div className="app app--tabbed">
       <TopBar who={st.familyName} onLogout={onLogout} />
 
-      {/* Someone is waiting on these, so they sit above whatever tab you're on. */}
-      {asks.map((r) => (
-        <section className="card card--attention" key={r.requestId}>
-          <h2>{r.memberName} is asking</h2>
-          <div className="row">
-            <div className="row__main">
-              <Money value={r.amount} unit={st.symbol} size="sm" />
-              <div className="meta">to {r.toName}</div>
-            </div>
-            <div className="btn-pair">
-              <button className="btn btn--sm btn--go" disabled={busy !== null} onClick={() => verdict(r.requestId, 'approve')}>
-                {busy === `req:${r.requestId}` ? <span className="spinner" /> : 'Approve'}
-              </button>
-              <button className="btn btn--sm btn--danger" disabled={busy !== null} onClick={() => verdict(r.requestId, 'deny')}>
-                Decline
-              </button>
-            </div>
-          </div>
-        </section>
-      ))}
-
-      {st.wallet.setup.status === 'running' && (
-        <div className="note note--wait" role="status">
-          <span className="spinner" />Getting your account ready — this happens once.
-        </div>
-      )}
-      {st.wallet.setup.status === 'failed' && (
-        <div className="note note--err" role="alert">Setup didn't finish: {st.wallet.setup.reason} Reload to retry.</div>
-      )}
-
-      {tab === 'pot' && <Pot st={st} busy={busy} run={run} />}
-      {tab === 'family' && <Family st={st} busy={busy} run={run} />}
+      {tab === 'pot' && <Pot st={st} act={act} onInfo={setNote} />}
+      {tab === 'family' && <Family st={st} act={act} onInfo={setNote} />}
       {tab === 'activity' && <Activity st={st} />}
 
-      {note && (
-        <div className={`note note--${note.kind}`} role="status" aria-live="polite">
-          {note.kind === 'wait' && <span className="spinner" />}{note.text}
-        </div>
-      )}
+      {/* Funding is a job like any other, so it gets the same surface. */}
+      <Progress
+        job={funding
+          ? { state: 'running', title: 'Setting up your account', note: 'Getting your first USD₮ and turning on fee payments.' }
+          : job}
+        onClose={() => setJob(null)}
+      />
+
+      <Sheet open={Boolean(note)} title={note ? NOTES[note].title : ''} onClose={() => setNote(null)}>
+        {note && NOTES[note].body.map((p, i) => <p key={i} className={i ? 'lede mt4' : 'lede'}>{p}</p>)}
+        <button className="btn btn--primary btn--block mt4" onClick={() => setNote(null)}>Got it</button>
+      </Sheet>
 
       <Sheet open={Boolean(pending)} title="Confirm it's you" onClose={() => setPending(null)}>
-        <p className="hint">This device can't use Face ID, so your passphrase approves this.</p>
-        <label htmlFor="pp">Your passphrase</label>
+        <p className="hint">This device can't use Face ID, so your passphrase approves it.</p>
+        <label htmlFor="pp">Passphrase</label>
         <input id="pp" type="password" value={passphrase} autoFocus enterKeyHint="go"
           onChange={(e) => setPassphrase(e.target.value)} />
-        <button className="btn btn--primary btn--block mt4" disabled={passphrase.length < 8} onClick={runWithPassphrase}>
+        <button className="btn btn--primary btn--block mt4" disabled={passphrase.length < 8} onClick={withPassphrase}>
           Approve
         </button>
       </Sheet>
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
-        {([
-          ['pot', 'Pot', <Icon.pot key="p" />],
-          ['family', 'Family', <Icon.family key="f" />],
-          ['activity', 'Activity', <Icon.activity key="a" />],
-        ] as const).map(([id, label, icon]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id as Tab)}>
-            {icon}
-            {label}
-            {id === 'family' && asks.length > 0 && <span className="tab__badge" aria-label={`${asks.length} waiting`} />}
-          </button>
-        ))}
+        {([['pot', 'Pot', <Icon.pot key="p" />], ['family', 'Family', <Icon.family key="f" />], ['activity', 'Activity', <Icon.activity key="a" />]] as const)
+          .map(([id, label, icon]) => (
+            <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id as Tab)}>
+              {icon}{label}
+              {id === 'family' && asks.length > 0 && <span className="tab__badge" aria-label={`${asks.length} waiting`} />}
+            </button>
+          ))}
       </nav>
     </div>
   )
 }
 
-type RunFn = (k: string, call: (auth: Approval) => Promise<unknown>, ok: string) => Promise<void>
+type Act = (
+  title: string,
+  call: (auth: Approval) => Promise<{ feeCharged?: string | null; txHash?: string }>,
+  done: string,
+) => void
+type OnInfo = (k: keyof typeof NOTES) => void
 
-/**
- * The fee for an operation, quoted in USD₮ before it's signed.
- *
- * The figure comes from WDK quoting the exact batch that would be sent, so
- * what's shown is what will be charged. Debounced, because it re-quotes as the
- * amount is typed.
- */
 function useFeeQuote(body: Record<string, unknown> | null) {
   const [quote, setQuote] = useState<FeeQuote | null>(null)
   const key = body ? JSON.stringify(body) : null
-
   useEffect(() => {
     if (!key) { setQuote(null); return }
     let live = true
     const t = setTimeout(() => {
-      api.post<FeeQuote>('/api/quote', JSON.parse(key))
-        .then((q) => { if (live) setQuote(q) })
-        .catch(() => { if (live) setQuote(null) })
+      api.post<FeeQuote>('/api/quote', JSON.parse(key)).then((q) => { if (live) setQuote(q) }).catch(() => { if (live) setQuote(null) })
     }, 400)
     return () => { live = false; clearTimeout(t) }
   }, [key])
-
   return quote
 }
 
 function Fee({ quote, symbol }: { quote: FeeQuote | null; symbol: string }) {
   if (!quote) return null
   if (quote.blocked) return <div className="fee fee--warn"><div className="fee__main">{quote.blocked}</div></div>
-  if (quote.feeMode === 'sponsored') {
-    return <div className="fee"><div className="fee__main">Network fee <b>free</b><span className="fee__aside">your first one is on us</span></div></div>
-  }
-  if (quote.fee == null) {
-    return <div className="fee fee--warn"><div className="fee__main">Couldn't work out the fee just now.</div></div>
-  }
-  // "Up to", because a quote is a ceiling — max gas at max fee — while the
-  // paymaster charges the actual cost once the operation has run.
+  if (quote.feeMode === 'sponsored') return <div className="fee"><div className="fee__main">Fee <b>free</b><span className="fee__aside">your first one is on us</span></div></div>
+  if (quote.fee == null) return <div className="fee fee--warn"><div className="fee__main">Couldn't work out the fee.</div></div>
+  // "Up to": a quote is a ceiling, the paymaster charges the real cost.
   return (
     <div className="fee">
-      <div className="fee__main">
-        Network fee <b className="num">up to {quote.fee} {symbol}</b>
-        <span className="fee__aside">in {symbol}, not ETH — you pay the actual cost</span>
-      </div>
-      {quote.steps && quote.steps.length > 0 && (
-        <ol className="fee__steps">{quote.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
-      )}
+      <div className="fee__main">Fee <b className="num">up to {quote.fee} {symbol}</b><span className="fee__aside">in {symbol}, not ETH</span></div>
     </div>
   )
 }
 
-function Pot({ st, busy, run }: { st: ParentState; busy: string | null; run: RunFn }) {
+function Pot({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }) {
+  const [adding, setAdding] = useState(false)
   const [amount, setAmount] = useState('')
-  const quote = useFeeQuote(Number(amount) > 0 ? { action: 'deposit', amount } : null)
-  const committed = st.members
-    .filter((m) => !m.revoked && m.caps)
-    .reduce((sum, m) => sum + Number(m.caps!.period), 0)
+  const quote = useFeeQuote(adding && Number(amount) > 0 ? { action: 'deposit', amount } : null)
+  const committed = st.members.filter((m) => !m.revoked && m.caps).reduce((s, m) => s + Number(m.caps!.period), 0)
 
   return (
     <>
-      <section className="card" style={{ textAlign: 'center' }}>
-        <h2>The pot</h2>
-        <Money value={st.wallet.pot} unit={st.symbol} />
-        <p className="hint mt2">Earning in Aave, in your own account — not ours.</p>
-
-        <div className="row mt4" style={{ textAlign: 'left', borderTop: '1px solid var(--line)', paddingTop: 'var(--s3)' }}>
-          <div className="row__main">
-            <div className="meta">In your account</div>
-            <div className="hint">outside Aave — funds deposits and fees</div>
-          </div>
-          <div className="num" style={{ fontWeight: 700 }}>{st.wallet.loose} {st.symbol}</div>
+      <section className="panel" aria-label="The family pot">
+        <div className="panel__label">
+          The pot
+          <button className="info" onClick={() => onInfo('pot')} aria-label="Where the money sits">i</button>
         </div>
+        <div className="panel__figure num">{st.wallet.pot}<span>{st.symbol}</span></div>
+        <div className="panel__foot">
+          <div className="panel__stat"><b className="num">{st.wallet.loose}</b><span>To hand</span></div>
+          <div className="panel__stat"><b className="num">{committed}</b><span>Committed weekly</span></div>
+        </div>
+      </section>
 
-        <label htmlFor="deposit">Add money</label>
-        <input id="deposit" className="num" inputMode="decimal" enterKeyHint="done"
-          placeholder="500" value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} />
-        {Number(st.wallet.loose) === 0 && (
-          <p className="hint mt2">Nothing in the account to add — the test faucet tops up once a day.</p>
-        )}
+      <button className="btn btn--primary btn--block mt4" onClick={() => { setAmount(''); setAdding(true) }}>
+        Add money
+      </button>
+
+      <div className="section">
+        <h2>Account</h2>
+        <button className="info" onClick={() => onInfo('fees')} aria-label="Who pays for what">i</button>
+      </div>
+      <dl className="dl">
+        <div className="dl__row"><dt>Fees paid in</dt><dd>{st.wallet.feeMode === 'usdt' ? st.symbol : 'sponsored'}</dd></div>
+        <div className="dl__row"><dt>Family spends</dt><dd>free</dd></div>
+        <div className="dl__row">
+          <dt>Address</dt>
+          <dd className="mono">{st.wallet.address.slice(0, 6)}…{st.wallet.address.slice(-4)}</dd>
+        </div>
+      </dl>
+
+      <Sheet open={adding} title="Add money" onClose={() => setAdding(false)}>
+        <div className="amount">
+          <input className="num" inputMode="decimal" enterKeyHint="done" placeholder="0" autoFocus
+            value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+            style={{ width: `${Math.max(1, amount.length || 1)}ch` }} aria-label={`Amount in ${st.symbol}`} />
+          <span className="amount__unit">{st.symbol}</span>
+        </div>
+        <p className="hint" style={{ textAlign: 'center' }}>{st.wallet.loose} {st.symbol} available</p>
         <Fee quote={quote} symbol={st.symbol} />
-        <button className="btn btn--primary btn--block mt4"
-          disabled={busy !== null || !Number(amount)}
-          onClick={() => run('deposit', (auth) => post('/api/deposit', { amount }, auth),
-            `Added ${amount} ${st.symbol} to the pot.`).then(() => setAmount(''))}>
-          {busy === 'deposit' && <span className="spinner" />}
-          {busy === 'deposit' ? 'Adding…' : 'Add to pot'}
+        <button className="btn btn--primary btn--block mt4" disabled={!Number(amount)}
+          onClick={() => {
+            const value = amount
+            setAdding(false)
+            act('Adding to the pot', (auth) => post('/api/deposit', { amount: value }, auth), `${value} ${st.symbol} is in the pot.`)
+          }}>
+          Add {amount || ''} {st.symbol}
         </button>
-      </section>
-
-      <section className="card">
-        <h2>Fees</h2>
-        {st.wallet.feeMode === 'usdt' ? (
-          <p className="hint" style={{ marginTop: 0 }}>
-            You pay your own fees in {st.symbol} — never ETH. A paymaster fronts the
-            network's gas and takes {st.symbol} back. Everyone you invite is sponsored:
-            they pay nothing, ever, and need no balance to spend.
-          </p>
-        ) : (
-          <p className="hint" style={{ marginTop: 0 }}>
-            Your first operation is on us. After it, this account pays its own fees in{' '}
-            {st.symbol} — and the family always spends for free.
-          </p>
-        )}
-        <div className="row mt4">
-          <div className="meta">Promised in weekly limits</div>
-          <div className="num">{committed} {st.symbol}</div>
-        </div>
-        <div className="row">
-          <div className="meta">Your account</div>
-          <code className="mono">{st.wallet.address.slice(0, 10)}…{st.wallet.address.slice(-6)}</code>
-        </div>
-        <p className="hint mt2">
-          The spend manager is approved for exactly the total above — never more, never
-          unlimited. It drops the moment you turn someone off.
-        </p>
-      </section>
+      </Sheet>
     </>
   )
 }
 
-function Family({ st, busy, run }: { st: ParentState; busy: string | null; run: RunFn }) {
-  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+function Family({ st, act, onInfo }: { st: ParentState; act: Act; onInfo: OnInfo }) {
+  const [open, setOpen] = useState<Member | null>(null)
+  const [limits, setLimits] = useState<Member | null>(null)
   const [inviting, setInviting] = useState(false)
   const [perTx, setPerTx] = useState('50')
   const [period, setPeriod] = useState('120')
   const [inviteName, setInviteName] = useState('')
-  const [inviteLink, setInviteLink] = useState('')
-  const [inviteBusy, setInviteBusy] = useState(false)
+  const [link, setLink] = useState('')
   const [copied, setCopied] = useState(false)
 
-  const quote = useFeeQuote(
-    editing && Number(perTx) > 0 && Number(period) > 0
-      ? { action: 'grant', memberId: editing.id, perTx, period, periodLengthDays: 7 }
-      : null,
-  )
+  const quote = useFeeQuote(limits && Number(perTx) > 0 && Number(period) > 0
+    ? { action: 'grant', memberId: limits.id, perTx, period, periodLengthDays: 7 } : null)
 
-  const invite = async () => {
-    setInviteBusy(true)
-    try {
-      const r = await api.post<{ joinPath: string }>('/api/invites', { name: inviteName })
-      setInviteLink(`${location.origin}${r.joinPath}`)
-      setInviteName('')
-    } finally { setInviteBusy(false) }
-  }
+  const asks = st.pendingRequests
 
   return (
     <>
-      {st.members.length === 0 && (
-        <Empty icon={<Icon.family />} title="No one yet">
-          Invite someone and they'll be set up in one tap.
-        </Empty>
+      {asks.length > 0 && (
+        <>
+          <div className="section"><h2>Waiting for you</h2></div>
+          <div className="list">
+            {asks.map((r) => (
+              <div className="list__item" key={r.requestId} style={{ cursor: 'default' }}>
+                <div className="avatar">{r.memberName.slice(0, 1).toUpperCase()}</div>
+                <div className="list__body">
+                  <div className="list__title num">{r.amount} {st.symbol}</div>
+                  <div className="list__sub">{r.memberName} · {r.toName}</div>
+                </div>
+                <div className="list__end">
+                  <button className="btn btn--sm btn--go"
+                    onClick={() => act('Approving', (a) => post(`/api/requests/${r.requestId}/approve`, {}, a), 'Approved and paid.')}>
+                    Approve
+                  </button>
+                  <button className="btn btn--sm btn--danger"
+                    onClick={() => act('Declining', (a) => post(`/api/requests/${r.requestId}/deny`, {}, a), 'Declined.')}>
+                    No
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      {st.members.map((m) => (
-        <section className="card" key={m.id}>
-          <div className="row">
-            <div className="row__main">
-              <div className="row__title">{m.name}</div>
-              <div className="meta">
-                {m.scopeId && !m.revoked
-                  ? <>can spend <b className="num">{m.spendable}</b> now · used <span className="num">{m.spentThisPeriod}</span> this week</>
-                  : m.revoked ? 'spending is off' : 'no limits set yet'}
-              </div>
-            </div>
-            {m.scopeId && !m.revoked && <span className="pill pill--on">on</span>}
-            {m.revoked && <span className="pill pill--off">off</span>}
-          </div>
+      <div className="section">
+        <h2>Family</h2>
+        <button className="info" onClick={() => onInfo('committed')} aria-label="Committed to the family">i</button>
+      </div>
 
-          {m.scopeId && !m.revoked && m.caps && (
-            <div className="tags">
-              <span className="tag">{m.caps.perTx} {st.symbol} per purchase</span>
-              <span className="tag">{m.caps.period} {st.symbol} per week</span>
-            </div>
-          )}
-
-          {/* The permission id grant() returned — the thing that actually
-              enforces the limits, rather than the app's memory of them. */}
-          {m.scopeId && (
-            <details className="perm">
-              <summary>Permission on-chain</summary>
-              <code className="mono">{m.scopeId}</code>
-            </details>
-          )}
-
-          <div className="btn-pair mt4">
-            <button className="btn btn--sm btn--go" disabled={busy !== null}
-              onClick={() => {
-                setPerTx(m.caps?.perTx ?? '50')
-                setPeriod(m.caps?.period ?? '120')
-                setEditing({ id: m.id, name: m.name })
-              }}>
-              {m.scopeId && !m.revoked ? 'Change limits' : 'Set limits'}
-            </button>
-            {m.scopeId && !m.revoked && (
-              <button className="btn btn--sm btn--danger" disabled={busy !== null}
-                onClick={() => run(`revoke:${m.id}`, (auth) => post(`/api/members/${m.id}/revoke`, {}, auth), `${m.name} can't spend any more.`)}>
-                {busy === `revoke:${m.id}` ? <span className="spinner" /> : 'Turn off'}
+      {st.members.length === 0
+        ? <Empty icon={<Icon.family />} title="No one yet">Invite someone — they're set up in one tap.</Empty>
+        : (
+          <div className="list">
+            {st.members.map((m) => (
+              <button className="list__item" key={m.id} onClick={() => setOpen(m)}>
+                <div className={`avatar${m.scopeId && !m.revoked ? '' : ' avatar--off'}`}>{m.name.slice(0, 1).toUpperCase()}</div>
+                <div className="list__body">
+                  <div className="list__title">{m.name}</div>
+                  <div className="list__sub">
+                    {m.scopeId && !m.revoked
+                      ? <><span className="num">{m.spendable}</span> {st.symbol} left this week</>
+                      : m.revoked ? 'Turned off' : 'No limits yet'}
+                  </div>
+                </div>
+                <div className="list__end">
+                  {m.revoked && <span className="pill pill--off">off</span>}
+                  <Icon.chevron />
+                </div>
               </button>
-            )}
+            ))}
           </div>
-        </section>
-      ))}
+        )}
 
-      <button className="btn btn--quiet btn--block" onClick={() => { setInviteLink(''); setCopied(false); setInviting(true) }}>
-        Add someone
+      <button className="btn btn--quiet btn--block mt4" onClick={() => { setLink(''); setCopied(false); setInviting(true) }}>
+        Invite someone
       </button>
 
-      <Sheet open={Boolean(editing)} title={editing ? `${editing.name}'s limits` : ''} onClose={() => setEditing(null)}>
-        <label htmlFor="perTx">Each purchase, at most ({st.symbol})</label>
-        <input id="perTx" className="num" inputMode="decimal" value={perTx}
-          onChange={(e) => setPerTx(e.target.value.replace(/[^0-9.]/g, ''))} />
-        <label htmlFor="perWeek">Each week, at most ({st.symbol})</label>
-        <input id="perWeek" className="num" inputMode="decimal" value={period}
-          onChange={(e) => setPeriod(e.target.value.replace(/[^0-9.]/g, ''))} />
+      {/* One person, one sheet — limits, the on-chain permission, and the
+          only two actions that apply to them. */}
+      <Sheet open={Boolean(open)} title={open?.name ?? ''} onClose={() => setOpen(null)}>
+        {open && (
+          <>
+            <dl className="dl">
+              <div className="dl__row"><dt>Each purchase</dt><dd>{open.caps ? `${open.caps.perTx} ${st.symbol}` : '—'}</dd></div>
+              <div className="dl__row"><dt>Each week</dt><dd>{open.caps ? `${open.caps.period} ${st.symbol}` : '—'}</dd></div>
+              <div className="dl__row"><dt>Used this week</dt><dd className="num">{open.spentThisPeriod} {st.symbol}</dd></div>
+              <div className="dl__row"><dt>Can spend now</dt><dd className="num">{open.spendable} {st.symbol}</dd></div>
+            </dl>
+
+            {open.scopeId && (
+              <details className="perm">
+                <summary>Permission on-chain</summary>
+                <code className="mono">{open.scopeId}</code>
+              </details>
+            )}
+
+            <button className="btn btn--primary btn--block mt4"
+              onClick={() => { setPerTx(open.caps?.perTx ?? '50'); setPeriod(open.caps?.period ?? '120'); setOpen(null); setLimits(open) }}>
+              {open.scopeId && !open.revoked ? 'Change limits' : 'Set limits'}
+            </button>
+            {open.scopeId && !open.revoked && (
+              <button className="btn btn--danger btn--block mt2"
+                onClick={() => { const m = open; setOpen(null); act('Turning off', (a) => post(`/api/members/${m.id}/revoke`, {}, a), `${m.name} can't spend any more.`) }}>
+                Turn off spending
+              </button>
+            )}
+          </>
+        )}
+      </Sheet>
+
+      <Sheet open={Boolean(limits)} title={limits ? `${limits.name}'s limits` : ''} onClose={() => setLimits(null)}>
+        <label htmlFor="perTx">Each purchase, at most</label>
+        <input id="perTx" className="num" inputMode="decimal" value={perTx} onChange={(e) => setPerTx(e.target.value.replace(/[^0-9.]/g, ''))} />
+        <label htmlFor="perWeek">Each week, at most</label>
+        <input id="perWeek" className="num" inputMode="decimal" value={period} onChange={(e) => setPeriod(e.target.value.replace(/[^0-9.]/g, ''))} />
         <Fee quote={quote} symbol={st.symbol} />
-        <button className="btn btn--primary btn--block mt4"
-          disabled={busy !== null || !Number(perTx) || !Number(period)}
+        <button className="btn btn--primary btn--block mt4" disabled={!Number(perTx) || !Number(period)}
           onClick={() => {
-            const m = editing!
-            setEditing(null)
-            run(`grant:${m.id}`, (auth) => post(`/api/members/${m.id}/grant`, { perTx, period, periodLengthDays: 7 }, auth),
-              `${m.name} can spend up to ${perTx} at a time.`)
+            const m = limits!
+            setLimits(null)
+            act('Setting limits', (a) => post(`/api/members/${m.id}/grant`, { perTx, period, periodLengthDays: 7 }, a),
+              `${m.name} can spend up to ${perTx} ${st.symbol} at a time.`)
           }}>
           Save limits
         </button>
       </Sheet>
 
-      <Sheet open={inviting} title="Add someone" onClose={() => setInviting(false)}>
-        <p className="hint">They tap the link once. No app, nothing to fund, nothing to remember.</p>
-        {!inviteLink ? (
+      <Sheet open={inviting} title="Invite someone" onClose={() => setInviting(false)}>
+        {!link ? (
           <>
-            <label htmlFor="inviteName">Their name</label>
-            <input id="inviteName" type="text" value={inviteName} enterKeyHint="done"
+            <label htmlFor="who">Their name</label>
+            <input id="who" type="text" value={inviteName} autoFocus enterKeyHint="done"
               onChange={(e) => setInviteName(e.target.value)} />
-            <button className="btn btn--primary btn--block mt4" disabled={inviteBusy || !inviteName.trim()} onClick={invite}>
-              {inviteBusy && <span className="spinner" />}{inviteBusy ? 'Making link…' : 'Create invite link'}
+            <button className="btn btn--primary btn--block mt4" disabled={!inviteName.trim()}
+              onClick={async () => {
+                const r = await api.post<{ joinPath: string }>('/api/invites', { name: inviteName })
+                setLink(`${location.origin}${r.joinPath}`)
+                setInviteName('')
+              }}>
+              Create link
             </button>
           </>
         ) : (
           <>
-            <div className="linkbox mono">{inviteLink}</div>
+            <p className="hint">One tap sets them up. Nothing to install.</p>
+            <div className="linkbox mono">{link}</div>
             <button className="btn btn--primary btn--block mt4"
-              onClick={() => { navigator.clipboard?.writeText(inviteLink); setCopied(true) }}>
+              onClick={() => { navigator.clipboard?.writeText(link); setCopied(true) }}>
               {copied ? 'Copied' : 'Copy link'}
             </button>
-            <p className="center-row"><button className="link" onClick={() => setInviting(false)}>Done</button></p>
           </>
         )}
       </Sheet>
@@ -406,26 +388,24 @@ function Family({ st, busy, run }: { st: ParentState; busy: string | null; run: 
 
 function Activity({ st }: { st: ParentState }) {
   if (st.activity.length === 0) {
-    return <Empty icon={<Icon.receipt />} title="Nothing yet">Deposits, limits and payments show up here.</Empty>
+    return <Empty icon={<Icon.receipt />} title="Nothing yet">Money moved shows up here.</Empty>
   }
   return (
-    <section className="card">
-      <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {st.activity.map((a) => (
-          <li className="row" key={a.id}>
-            <div className="row__main">
-              <div className="row__title">{a.text}</div>
-              <div className="meta">
-                {new Date(a.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-              </div>
+    <div className="list mt4">
+      {st.activity.map((a) => (
+        <div className="list__item" key={a.id} style={{ cursor: 'default' }}>
+          <div className="list__body">
+            <div className="list__title">{a.text}</div>
+            <div className="list__sub">
+              {new Date(a.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </div>
-            {a.txHash && (
-              <a className="txlink" href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer"
-                 aria-label="View on the block explorer">↗</a>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+          </div>
+          {a.txHash && (
+            <a className="txlink" href={`https://sepolia.basescan.org/tx/${a.txHash}`} target="_blank" rel="noreferrer"
+               aria-label="View receipt">↗</a>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }

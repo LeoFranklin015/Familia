@@ -90,7 +90,7 @@ body {
   max-width: 30rem;
   margin: 0 auto;
   min-height: 100dvh;
-  padding: calc(var(--safe-top) + var(--s4)) var(--s4) 0;
+  padding: calc(var(--safe-top) + var(--s3)) var(--s5) 0;
   padding-bottom: var(--pad-bottom, calc(var(--safe-bottom) + var(--s8)));
 }
 .app--tabbed { --pad-bottom: calc(var(--safe-bottom) + 5.5rem); }
@@ -98,7 +98,7 @@ body {
 .app--tabbed.app--acting { --pad-bottom: calc(var(--safe-bottom) + 10rem); }
 
 /* ------------------------------------------------------------------- type */
-h1 { font-size: 1.55rem; line-height: 1.2; letter-spacing: -0.021em; font-weight: 700; }
+h1 { font-size: 1.75rem; line-height: 1.18; letter-spacing: -0.026em; font-weight: 700; }
 h2 { font-size: 1.05rem; line-height: 1.3; letter-spacing: -0.012em; font-weight: 650; }
 .eyebrow {
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em;
@@ -122,7 +122,7 @@ h2 { font-size: 1.05rem; line-height: 1.3; letter-spacing: -0.012em; font-weight
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   padding: var(--s5);
-  margin-bottom: var(--s3);
+  margin-bottom: var(--s4);
 }
 .card--attention { border-color: var(--warn-line); background: var(--warn-soft); }
 .card > h2 { margin-bottom: var(--s3); }
@@ -148,7 +148,7 @@ button, input, select { font: inherit; color: inherit; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
-  min-height: var(--tap); padding: 0 var(--s5);
+  min-height: 50px; padding: 0 var(--s5);
   border: 1px solid transparent; border-radius: var(--r-control);
   font-size: 1rem; font-weight: 650; cursor: pointer;
   transition: transform 0.12s ease, background-color 0.18s ease, opacity 0.18s ease;
@@ -197,7 +197,7 @@ input::placeholder { color: var(--ink-3); }
 .amount input {
   width: auto; min-width: 2ch; max-width: 8ch; min-height: 0;
   padding: 0; border: 0; background: none; text-align: right;
-  font-size: 3rem; font-weight: 700; letter-spacing: -0.035em;
+  font-size: 3.4rem; font-weight: 700; letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
 }
 .amount input:focus { outline: none; }
@@ -337,6 +337,105 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 .mt4 { margin-top: var(--s4); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
+/* ======================================================================
+   The ledger panel.
+
+   Money apps put the balance on a card, not in a box on a page — it is
+   the one object you are meant to feel you own. So the figure lives on
+   a near-black panel and everything else on the page goes flat and
+   quiet around it. One dominant element per screen, then hairlines.
+   ====================================================================== */
+
+.panel {
+  position: relative;
+  border-radius: 20px;
+  padding: var(--s5);
+  background: linear-gradient(158deg, #1b2620 0%, #121a15 58%, #16211b 100%);
+  color: #f4f6f4;
+  overflow: hidden;
+}
+.panel::after {
+  /* A single soft highlight, so the surface reads as a material rather
+     than a flat fill. No gradient wash. */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 82% -10%, rgb(95 190 134 / 0.16), transparent 58%);
+  pointer-events: none;
+}
+.panel__label {
+  display: flex; align-items: center; gap: var(--s2);
+  font-size: 0.72rem; font-weight: 650; letter-spacing: 0.08em;
+  text-transform: uppercase; color: rgb(244 246 244 / 0.52);
+}
+.panel__figure {
+  margin-top: var(--s3);
+  font-size: 2.9rem; font-weight: 700; letter-spacing: -0.038em; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.panel__figure span { font-size: 1rem; font-weight: 650; color: rgb(244 246 244 / 0.55); margin-left: var(--s2); }
+.panel__foot {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4);
+  margin-top: var(--s5); padding-top: var(--s4);
+  border-top: 1px solid rgb(244 246 244 / 0.1);
+}
+.panel__stat b {
+  display: block; font-size: 0.98rem; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.panel__stat span {
+  display: block; margin-top: 1px;
+  font-size: 0.72rem; color: rgb(244 246 244 / 0.5);
+}
+
+/* Flat list rows — the rest of the page. No card chrome. */
+.list { display: flex; flex-direction: column; }
+.list__item {
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: 60px; padding: var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+  background: none; border-left: 0; border-right: 0; border-top: 0;
+  width: 100%; text-align: left; cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.list__item:last-child { border-bottom: 0; }
+.list__item:active { opacity: 0.6; }
+.list__body { flex: 1; min-width: 0; }
+.list__title { font-weight: 600; letter-spacing: -0.005em; }
+.list__sub { font-size: 0.82rem; color: var(--ink-2); margin-top: 1px; }
+.list__end { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.chev { color: var(--ink-3); flex: none; }
+
+/* An initial, not a photo — nobody uploads one for a demo. */
+.avatar {
+  width: 38px; height: 38px; flex: none;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-weight: 700; font-size: 0.92rem;
+}
+.avatar--off { background: var(--surface-sunk); color: var(--ink-3); }
+
+/* Section heading that isn't a card header. */
+.section {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s3); margin: var(--s6) 0 var(--s1);
+}
+.section h2 { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+/* The (i): detail on demand, so the screen carries none of it. */
+.info {
+  width: 26px; height: 26px; flex: none; padding: 0;
+  display: grid; place-items: center; border-radius: 50%;
+  background: none; border: 1px solid var(--line-strong);
+  color: var(--ink-3); cursor: pointer; font-size: 0.72rem; font-weight: 700;
+}
+.info:active { background: var(--surface-sunk); }
+.panel .info { border-color: rgb(244 246 244 / 0.22); color: rgb(244 246 244 / 0.65); }
+
+.dl { margin: 0; }
+.dl__row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s4); padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.dl__row:last-child { border-bottom: 0; }
+.dl__row dt { font-size: 0.85rem; color: var(--ink-2); }
+.dl__row dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+
 /* ==========================================================================
    Desktop: put the app in a handset.
 
@@ -457,3 +556,18 @@ details.perm .mono { display: block; margin-top: var(--s2); padding: var(--s3); 
 @media (max-width: 47.99rem) {
   .device__island, .stage__aside { display: none; }
 }
+
+/* — transaction progress — */
+.job { text-align: center; padding-bottom: var(--s2); }
+.job__mark {
+  width: 52px; height: 52px; margin: var(--s2) auto var(--s4);
+  display: grid; place-items: center; border-radius: 50%;
+}
+.job__mark svg { width: 26px; height: 26px; }
+.job__mark--running { background: var(--surface-sunk); color: var(--ink-2); }
+.job__mark--done { background: var(--accent-soft); color: var(--accent-ink); }
+.job__mark--failed { background: var(--danger-soft); color: var(--danger); }
+.job__line { font-size: 1.02rem; font-weight: 550; line-height: 1.4; }
+.job .hint { margin-top: var(--s2); }
+.job .dl, .job .btn { text-align: left; }
+.job .btn { text-align: center; }

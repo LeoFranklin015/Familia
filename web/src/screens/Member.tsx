@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type MemberState } from '../api'
 import { approve, knownCredentialId, NeedsPassphrase, post } from '../auth'
 import { Sheet } from '../components/Sheet'
+import { Progress, type Job } from '../components/Progress'
 import { TopBar } from '../App'
 import { Empty, Icon, Money, ScreenSkeleton } from '../components/ui'
 
@@ -28,6 +29,7 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
   const [amount, setAmount] = useState('')
   const [to, setTo] = useState('')
   const [state, setState] = useState<SendState>({ kind: 'idle' })
+  const [job, setJob] = useState<Job | null>(null)
   const [askPass, setAskPass] = useState(false)
   const [passphrase, setPassphrase] = useState('')
   const amountRef = useRef<HTMLInputElement>(null)
@@ -79,14 +81,20 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
         return
       }
     }
+    const title = overLimit ? 'Asking a parent' : `Paying ${merchant?.name ?? 'them'}`
     setState({ kind: overLimit ? 'asking' : 'sending' })
+    setJob({ state: 'running', title, note: overLimit ? 'Sending your request.' : 'Sending the payment.' })
     try {
       const r = await post<{ kind: 'spent' | 'asked'; txHash?: string }>('/api/spend', { to, amount }, approval)
-      setState(r.kind === 'spent' ? { kind: 'sent', txHash: r.txHash } : { kind: 'asked' })
+      setState({ kind: 'idle' })
+      setJob(r.kind === 'spent'
+        ? { state: 'done', title, note: `${amount} ${me.symbol} sent.`, txHash: r.txHash }
+        : { state: 'done', title, note: "Asked. You'll see it here when they answer." })
       setAmount('')
       load()
     } catch (e) {
-      setState({ kind: 'error', message: e instanceof Error ? e.message : 'Something went wrong.' })
+      setState({ kind: 'idle' })
+      setJob({ state: 'failed', title, reason: e instanceof Error ? e.message : 'Something went wrong.' })
     }
   }
 
@@ -103,15 +111,11 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
     <div className="app app--acting">
       <TopBar who={me.name} onLogout={onLogout} />
 
-      <h1>Pay someone</h1>
-      {me.limit && (
-        <p className="lede mt2">
-          Up to {me.limit} {me.symbol} at a time. More than that and a parent says yes first.
-        </p>
-      )}
+      <h1>Pay</h1>
+      {me.limit && <p className="hint">Up to {me.limit} {me.symbol} at a time</p>}
 
       <div className="card mt4">
-        <h2 id="who">Who</h2>
+        <h2 id="who" className="sr-only">Who to pay</h2>
         <div className="chips" role="group" aria-labelledby="who">
           {me.merchants.map((m) => (
             <button
@@ -155,21 +159,6 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
           </p>
         )}
 
-        {/* Live region: the outcome is announced, not just shown. */}
-        <div role="status" aria-live="polite">
-          {state.kind === 'sent' && (
-            <div className="note note--ok">
-              Paid.{' '}
-              {state.txHash && (
-                <a className="txlink" href={`https://sepolia.basescan.org/tx/${state.txHash}`} target="_blank" rel="noreferrer">
-                  see it ↗
-                </a>
-              )}
-            </div>
-          )}
-          {state.kind === 'asked' && <div className="note note--wait">Asked. You'll see it here when they answer.</div>}
-          {state.kind === 'error' && <div className="note note--err">{state.message}</div>}
-        </div>
       </div>
 
       <History items={me.activity} symbol={me.symbol} pending={me.myRequests.filter((r) => r.status === 'pending')} />
@@ -192,6 +181,8 @@ export default function Member({ onLogout }: { onLogout: () => void }) {
           </button>
         </div>
       </div>
+
+      <Progress job={job} onClose={() => setJob(null)} />
 
       <Sheet open={askPass} title="Confirm it's you" onClose={() => setAskPass(false)}>
         <p className="hint">This device can't use Face ID, so your passphrase approves the payment.</p>

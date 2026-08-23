@@ -9,12 +9,14 @@ import { useEffect, useRef, type ReactNode } from 'react'
  * Tab is trapped inside, and the page behind doesn't scroll away underneath.
  */
 export function Sheet({
-  open, title, onClose, children,
+  open, title, onClose, children, hideClose = false,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
+  /** For work that cannot be cancelled — offering a way out would be a lie. */
+  hideClose?: boolean
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const opener = useRef<Element | null>(null)
@@ -37,7 +39,7 @@ export function Sheet({
     ;(focusables()[0] ?? panel.current)?.focus()
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
+      if (e.key === 'Escape') { e.preventDefault(); if (!hideClose) onClose(); return }
       if (e.key !== 'Tab') return
       const items = focusables()
       if (items.length === 0) return
@@ -53,13 +55,13 @@ export function Sheet({
       document.body.style.overflow = overflow
       ;(opener.current as HTMLElement | null)?.focus?.()
     }
-  }, [open, onClose])
+  }, [open, onClose, hideClose])
 
   if (!open) return null
 
   return (
     <>
-      <div className="sheet-backdrop" onClick={onClose} aria-hidden="true" />
+      <div className="sheet-backdrop" onClick={hideClose ? undefined : onClose} aria-hidden="true" />
       <div
         className="sheet"
         role="dialog"
@@ -71,7 +73,7 @@ export function Sheet({
         <div className="sheet__grab" aria-hidden="true" />
         <div className="sheet__head">
           <h2>{title}</h2>
-          <button className="link" onClick={onClose}>Cancel</button>
+          {!hideClose && <button className="link" onClick={onClose}>Cancel</button>}
         </div>
         {children}
       </div>

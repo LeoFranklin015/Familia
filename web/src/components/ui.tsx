@@ -64,6 +64,9 @@ export const Icon = {
   lock: () => (
     <svg {...base} width="22" height="22" aria-hidden="true"><rect x="4.5" y="10" width="15" height="10.5" rx="2.2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
   ),
+  chevron: () => (
+    <svg {...base} width="18" height="18" className="chev" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
+  ),
   receipt: () => (
     <svg {...base} width="22" height="22" aria-hidden="true"><path d="M6 3.5h12v17l-2.5-1.6-2.5 1.6-2.5-1.6L8 20.5 6 21Z" /><path d="M9.5 8.5h5M9.5 12.5h5" /></svg>
   ),
