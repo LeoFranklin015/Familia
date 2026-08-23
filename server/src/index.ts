@@ -75,6 +75,10 @@ const immutable = (c: Context, next: Next) => {
 }
 app.use('/assets/*', immutable, serveStatic({ root: '../web/dist' }))
 app.use('/fonts/*', immutable, serveStatic({ root: '../web/dist' }))
+// The icon sits at the root rather than under /assets, so without its own
+// route it fell through to the SPA handler below and every request for it
+// returned the HTML shell.
+app.use('/icon.png', serveStatic({ root: '../web/dist', path: 'icon.png' }))
 app.get(
   '*',
   (c, next) => {

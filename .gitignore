@@ -27,6 +27,7 @@ hackathon.md
 wdk-skill.md
 tasks/
 *.png
+!web/public/icon.png
 *.jpg
 *.jpeg
 frontend-slides.md
