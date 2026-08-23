@@ -29,6 +29,7 @@ tasks/
 *.png
 !web/public/icon.png
 !web/public/flow-diagram.png
+!web/public/banner.png
 *.jpg
 *.jpeg
 frontend-slides.md

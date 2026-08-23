@@ -1,4 +1,4 @@
-<img src="web/public/icon.png" width="72" alt="">
+![Familia](web/public/banner.png)
 
 # Familia
 
