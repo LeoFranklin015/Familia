@@ -48,7 +48,9 @@ export function AccountSheet({
 
       {children}
 
-      <button className="btn btn--quiet tap mt4" onClick={onSignOut}>
+      {/* Filled, because it is the only action on this sheet: an outlined
+          button on a dark sheet reads as disabled rather than quiet. */}
+      <button className="btn tap mt4" onClick={onSignOut}>
         <Icon name="signout" size={17} />
         Sign out
       </button>
